@@ -1,0 +1,65 @@
+= FFMPEG API
+
+An web service for converting audio/video files using FFMPEG.
+
+Based on:
+
+* https://github.com/surebert/docker-ffmpeg-service
+* https://github.com/jrottenberg/ffmpeg 
+
+FFMPEG API is provided as Docker image for easy consumption.
+
+== Endpoints
+
+* `POST /mp3` - Convert audio file in request body to mp3
+* `POST /mp4` - Convert video file in request body to mp4
+* `POST /jpg` - Convert image file to jpg
+* `GET /' - API Readme
+
+== Usage
+
+Convert audio/video/image files using the API.
+
+* `curl -F "file=@input.wav" 127.0.0.1:3000/mp3  > output.mp3`
+* `curl -F "file=@input.m4a" 127.0.0.1:3000/mp3  > output.mp3`
+* `curl -F "file=@input.mov" 127.0.0.1:3000/mp4  > output.mp4`
+* `curl -F "file=@input.mp4" 127.0.0.1:3000/mp4  > output.mp4`
+* `curl -F "file=@input.tiff" 127.0.0.1:3000/jpg  > output.jpg`
+* `curl -F "file=@input.png" 127.0.0.1:3000/jpg  > output.jpg`
+
+== Configuration and New Endpoints
+
+You can change the ffmpeg conversion settings or add new endpoints by editing 
+the link:src/endpoints.js[src/endpoints.js] file.
+
+== Docker image
+
+=== Build your own
+
+* Clone this repository.
+* Build Docker image:
+** `docker build -t ffmpeg-api .`
+* Run image in foreground:
+** `docker run -it --rm -p 3000:3000 ffmpeg-api`
+* Run image in background:
+** `docker run -d -name ffmpeg-api -p 3000:3000 ffmpeg-api`
+
+=== Use existing
+
+* Run image in foreground:
+** `docker run -it --rm -p 3000:3000 kazhar/ffmpeg-api`
+* Run image in background:
+** `docker run -d --name ffmpeg-api -p 3000:3000 kazhar/ffmpeg-api`
+
+=== Logging
+
+Default log level is INFO. Set log level using environment variable.
+
+- Set log level to debug:
+  - `docker run -it --rm -p 3000:3000 -e LOG_LEVEL=debug kazhar/ffmpeg-api`
+
+== Background
+
+Originally developed by https://github.com/surebert[Paul Visco].                  
+
+Changes include updated Node.js version, Docker image based on Alpine, logging and others.

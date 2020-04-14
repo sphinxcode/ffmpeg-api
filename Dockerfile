@@ -1,13 +1,9 @@
-FROM jrottenberg/ffmpeg:centos
-
-MAINTAINER Paul Visco <paul.visco@gmail.com>
-
 #####################################################################
 #
 # A Docker image to convert audio and video for web using web API
 #
 #   with
-#     - Latest FFMPEG (built)
+#     - FFMPEG (built)
 #     - NodeJS
 #     - fluent-ffmpeg
 #
@@ -15,47 +11,46 @@ MAINTAINER Paul Visco <paul.visco@gmail.com>
 #
 #            https://github.com/fluent-ffmpeg/node-fluent-ffmpeg
 #
+# Original image and FFMPEG API by Paul Visco
+# https://github.com/surebert/docker-ffmpeg-service
+#
 #####################################################################
 
-# Add the following two dependencies for nodejs
-RUN yum install -y git
-RUN yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-RUN yum install -y nodejs npm --enablerepo=epel
+FROM node:12.16.2-alpine3.11 as build
 
-WORKDIR /usr/local/src
+RUN apk add --no-cache git
 
-# Custom Builds go here
-RUN npm install -g fluent-ffmpeg
+# install pkg
+RUN npm install -g pkg
 
-# Remove all tmpfile and cleanup
-# =================================
-WORKDIR /usr/local/
-RUN rm -rf /usr/local/src
-RUN yum clean all
-RUN rm -rf /var/cache/yum
+ENV PKG_CACHE_PATH /usr/cache
 
-# =================================
-
-# Setup a working directory to allow for
-# docker run --rm -ti -v ${PWD}:/work ...
-# =======================================
-WORKDIR /work
-
-# Make sure Node.js is installed
-RUN           node -v
-RUN           npm -v
-
-#Create app dir
-RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 
-#Install Dependencies
-COPY package.json /usr/src/app
+# Bundle app source
+COPY ./src .
 RUN npm install
 
-#Bundle app source
-COPY . /usr/src/app
+# Create single binary file
+RUN pkg --targets node12-alpine-x64 /usr/src/app/package.json
+
+
+FROM jrottenberg/ffmpeg:4.2-alpine311
+
+# Create user and change workdir
+RUN adduser --disabled-password --home /home/ffmpgapi ffmpgapi
+WORKDIR /home/ffmpgapi
+
+# Copy files from build stage
+COPY --from=build /usr/src/app/ffmpegapi .
+COPY --from=build /usr/src/app/index.md .
+RUN chown ffmpgapi:ffmpgapi * && chmod 755 ffmpegapi
 
 EXPOSE 3000
+
+# Change user
+USER ffmpgapi
+
 ENTRYPOINT []
-CMD [ "node", "app.js" ]
+CMD [ "./ffmpegapi" ]
+
