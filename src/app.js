@@ -5,7 +5,6 @@ const Busboy = require('busboy');
 const compression = require('compression');
 const ffmpeg = require('fluent-ffmpeg');
 const uniqueFilename = require('unique-filename');
-const consts = require('./constants.js');
 const endpoints = require('./endpoints.js');
 
 //const winston = require('winston');
@@ -28,6 +27,11 @@ const logger = createLogger({
   })]
 });
 
+//constants
+fileSizeLimit = 524288000;
+port = 3000;
+timeout = 3600000;
+
 // catch SIGINT and SIGTERM and exit
 // Using a single function to handle multiple signals
 function handle(signal) {
@@ -38,6 +42,8 @@ function handle(signal) {
 process.on('SIGINT', handle);
 //SIGTERM is sent to terminate process, for example docker stop sends SIGTERM
 process.on('SIGTERM', handle);
+
+
 
 app.use(compression());
 
@@ -54,7 +60,7 @@ for (let prop in endpoints.types) {
                 headers: req.headers,
                 limits: {
                     files: 1,
-                    fileSize: consts.fileSizeLimit,
+                    fileSize: fileSizeLimit,
             }});
             busboy.on('filesLimit', function() {
                 logger.error(JSON.stringify({
@@ -174,7 +180,7 @@ require('express-readme')(app, {
 });
 
 
-const server = app.listen(consts.port, function() {
+const server = app.listen(port, function() {
     let host = server.address().address;
     let port = server.address().port;
     logger.info(JSON.stringify({
@@ -187,11 +193,11 @@ const server = app.listen(consts.port, function() {
 server.on('connection', function(socket) {
     logger.log('debug',JSON.stringify({
         action: 'new connection',
-        timeout: consts.timeout,
+        timeout: timeout,
     }));
-    socket.setTimeout(consts.timeout);
-    socket.server.timeout = consts.timeout;
-    server.keepAliveTimeout = consts.timeout;
+    socket.setTimeout(timeout);
+    socket.server.timeout = timeout;
+    server.keepAliveTimeout = timeout;
 });
 
 app.use(function(req, res, next) {
