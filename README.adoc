@@ -14,7 +14,7 @@ FFMPEG API is provided as Docker image for easy consumption.
 * `POST /mp3` - Convert audio file in request body to mp3
 * `POST /mp4` - Convert video file in request body to mp4
 * `POST /jpg` - Convert image file to jpg
-* `GET /' - API Readme
+* `GET /` - API Readme
 
 == Usage
 
