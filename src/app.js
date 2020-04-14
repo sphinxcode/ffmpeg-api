@@ -27,8 +27,7 @@ const logger = createLogger({
   })]
 });
 
-//constants
-fileSizeLimit = 524288000;
+fileSizeLimit = parseInt(process.env.FILE_SIZE_LIMIT_BYTES || "536870912") //536870912 = 512MB 
 port = 3000;
 timeout = 3600000;
 
