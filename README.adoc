@@ -1,6 +1,6 @@
 = FFMPEG API
 
-An web service for converting audio/video files using FFMPEG.
+An web service for converting audio/video/image files using FFMPEG.
 
 Based on:
 
