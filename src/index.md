@@ -2,6 +2,8 @@
 
 An web service for converting audio/video files using FFMPEG.
 
+Sources: https://github.com/samisalkosuo/ffmpeg-api.
+
 Based on https://github.com/surebert/docker-ffmpeg-service and https://github.com/jrottenberg/ffmpeg 
 
 
