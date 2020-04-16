@@ -7,25 +7,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const uniqueFilename = require('unique-filename');
 const endpoints = require('./endpoints.js');
 
-//const winston = require('winston');
-//setup custom logger
-const { createLogger, format, transports } = require('winston');
-const { combine, timestamp, label, printf } = format;
-
-const logFormat = printf(({ level, message, label, timestamp }) => {
-  return `${timestamp} [${label}] ${level}: ${message}`;
-});
-
-const logger = createLogger({
-  format: combine(    
-    label({ label: 'ffmpegapi' }),
-    timestamp(),
-    logFormat
-  ),
-  transports: [new transports.Console({
-    level: process.env.LOG_LEVEL || 'info'
-  })]
-});
+const logger = require('./logger.js')
 
 fileSizeLimit = parseInt(process.env.FILE_SIZE_LIMIT_BYTES || "536870912") //536870912 = 512MB 
 port = 3000;
@@ -34,15 +16,13 @@ timeout = 3600000;
 // catch SIGINT and SIGTERM and exit
 // Using a single function to handle multiple signals
 function handle(signal) {
-    console.log(`Received ${signal}. Exiting...`);
+    logger.info(`Received ${signal}. Exiting...`);
     process.exit(1)
   }  
 //SIGINT is typically CTRL-C
 process.on('SIGINT', handle);
 //SIGTERM is sent to terminate process, for example docker stop sends SIGTERM
 process.on('SIGTERM', handle);
-
-
 
 app.use(compression());
 
@@ -53,7 +33,6 @@ for (let prop in endpoints.types) {
         app.post('/' + prop, function(req, res) {
             let hitLimit = false;
             let fileName = '';
-            //let savedFile = uniqueFilename(__dirname + '/uploads/');
             let savedFile = uniqueFilename('/tmp/');
             let busboy = new Busboy({
                 headers: req.headers,
@@ -62,10 +41,7 @@ for (let prop in endpoints.types) {
                     fileSize: fileSizeLimit,
             }});
             busboy.on('filesLimit', function() {
-                logger.error(JSON.stringify({
-                    type: 'filesLimit',
-                    message: 'Upload file size limit hit',
-                }));
+                logger.error(`upload file size limit hit. max file size ${fileSizeLimit} bytes.`)
             });
 
             busboy.on('file', function(
@@ -77,38 +53,30 @@ for (let prop in endpoints.types) {
             ) {
                 file.on('limit', function(file) {
                     hitLimit = true;
-                    let err = {file: filename, error: 'exceeds max size limit'};
-                    err = JSON.stringify(err);
-                    logger.error(err);
+                    let msg = `${filename} exceeds max size limit. max file size ${fileSizeLimit} bytes.`
+                    logger.error(msg);
                     res.writeHead(500, {'Connection': 'close'});
-                    res.end(err);
+                    res.end(JSON.stringify({error: msg}));
                 });
                 let log = {
                     file: filename,
                     encoding: encoding,
                     mimetype: mimetype,
                 };
-                logger.log('debug',JSON.stringify(log));
+                logger.debug(`file:${log.file}, encoding: ${log.encoding}, mimetype: ${log.mimetype}`);
                 file.on('data', function(data) {
                     bytes += data.length;
                 });
                 file.on('end', function(data) {
                     log.bytes = bytes;
-                    logger.log('debug',JSON.stringify(log));
+                    logger.debug(`file: ${log.file}, encoding: ${log.encoding}, mimetype: ${log.mimetype}, bytes: ${log.bytes}`);
                 });
 
                 fileName = filename;
-                logger.log('debug',JSON.stringify({
-                    action: 'Uploading',
-                    name: fileName,
-                }));
+                logger.debug(`uploading ${fileName}`)
                 let written = file.pipe(fs.createWriteStream(savedFile));
-
                 if (written) {
-                    logger.log('debug',JSON.stringify({
-                        action: 'saved',
-                        path: savedFile,
-                    }));
+                    logger.debug(`${fileName} saved, path: ${savedFile}`)
                 }
             });
             busboy.on('finish', function() {
@@ -116,53 +84,32 @@ for (let prop in endpoints.types) {
                     fs.unlinkSync(savedFile);
                     return;
                 }
-                logger.log('debug',JSON.stringify({
-                    action: 'upload complete',
-                    name: fileName,
-                }));
+                logger.debug(`upload complete. file: ${fileName}`)
                 let outputFile = savedFile + '.' + ffmpegParams.extension;
-                logger.log('debug',JSON.stringify({
-                    action: 'begin conversion',
-                    from: savedFile,
-                    to: outputFile,
-                }));
+                logger.debug(`begin conversion from ${savedFile} to ${outputFile}`)
+                
+                //ffmpeg processing...
                 let ffmpegConvertCommand = ffmpeg(savedFile);
                 ffmpegConvertCommand
                         .renice(15)
                         .outputOptions(ffmpegParams.outputOptions)
                         .on('error', function(err) {
-                            let log = JSON.stringify({
-                                type: 'ffmpeg',
-                                message: err,
-                            });
-                            logger.error(log);
+                            logger.error(`${err}`);
                             fs.unlinkSync(savedFile);
                             res.writeHead(500, {'Connection': 'close'});
-                            res.end(log);
+                            res.end(JSON.stringify({error: `${err}`}));
                         })
                         .on('end', function() {
                             fs.unlinkSync(savedFile);
-                            logger.log('debug',JSON.stringify({
-                                action: 'starting download to client',
-                                file: savedFile,
-                            }));
+                            logger.debug(`starting download to client ${savedFile}`);
 
                             res.download(outputFile, null, function(err) {
                                 if (err) {
-                                    logger.error(JSON.stringify({
-                                        type: 'download',
-                                        message: err,
-                                    }));
+                                    logger.error(`download ${err}`);
                                 }
-                                logger.log('debug',JSON.stringify({
-                                    action: 'deleting',
-                                    file: outputFile,
-                                }));
+                                logger.debug(`deleting ${outputFile}`);
                                 if (fs.unlinkSync(outputFile)) {
-                                    logger.log('debug',JSON.stringify({
-                                        action: 'deleted',
-                                        file: outputFile,
-                                    }));
+                                    logger.debug(`deleted ${outputFile}`);
                                 }
                             });
                         })
@@ -182,18 +129,11 @@ require('express-readme')(app, {
 const server = app.listen(port, function() {
     let host = server.address().address;
     let port = server.address().port;
-    logger.info(JSON.stringify({
-        action: 'listening',
-        url: 'http://'+host+':'+port,
-    }));
+    logger.info('listening http://'+host+':'+port)
 });
 
-
 server.on('connection', function(socket) {
-    logger.log('debug',JSON.stringify({
-        action: 'new connection',
-        timeout: timeout,
-    }));
+    logger.debug(`new connection, timeout: ${timeout}`);
     socket.setTimeout(timeout);
     socket.server.timeout = timeout;
     server.keepAliveTimeout = timeout;
