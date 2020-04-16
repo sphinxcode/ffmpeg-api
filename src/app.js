@@ -7,9 +7,10 @@ const ffmpeg = require('fluent-ffmpeg');
 const uniqueFilename = require('unique-filename');
 const endpoints = require('./endpoints.js');
 
-const logger = require('./logger.js')
+const logger = require('./logger.js');
+const constants = require('./constants.js');
 
-fileSizeLimit = parseInt(process.env.FILE_SIZE_LIMIT_BYTES || "536870912") //536870912 = 512MB 
+fileSizeLimit = constants.fileSizeLimit;
 port = 3000;
 timeout = 3600000;
 
@@ -140,5 +141,5 @@ server.on('connection', function(socket) {
 });
 
 app.use(function(req, res, next) {
-  res.status(404).send(JSON.stringify({error: 'route not available'})+'\n');
+  res.status(404).send(JSON.stringify({error: 'route not found'})+'\n');
 });
