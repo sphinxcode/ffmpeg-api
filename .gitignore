@@ -2,7 +2,9 @@
 *.mp3
 *.m4a
 *.zip
+TODO*
 uploads/*
+dev.dockerfile
 
 .dockerignore
 .ebextensions

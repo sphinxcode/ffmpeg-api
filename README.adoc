@@ -6,6 +6,7 @@ Based on:
 
 * https://github.com/surebert/docker-ffmpeg-service
 * https://github.com/jrottenberg/ffmpeg 
+* https://github.com/fluent-ffmpeg/node-fluent-ffmpeg
 
 FFMPEG API is provided as Docker image for easy consumption.
 
@@ -30,7 +31,9 @@ Convert audio/video/image files using the API.
 == Configuration and New Endpoints
 
 You can change the ffmpeg conversion settings or add new endpoints by editing 
-the link:src/endpoints.js[src/endpoints.js] file.
+the link:src/endpoints.js[src/endpoints.js] file. 
+
+See also https://github.com/fluent-ffmpeg/node-fluent-ffmpeg[node-fluent-ffmpeg] for more information.
 
 == Docker image
 
