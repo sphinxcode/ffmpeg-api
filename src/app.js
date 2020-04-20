@@ -28,12 +28,15 @@ var upload = require('./routes/uploadfile.js');
 app.use(upload);
 
 //test route for development
-var test = require('./routes/test.js')
-app.use('/test', test)
+var test = require('./routes/test.js');
+app.use('/test', test);
 
 //routes to convert audio/video/image files to mp3/mp4/jpg
-var convert = require('./routes/convert.js')
-app.use('/convert', convert)
+var convert = require('./routes/convert.js');
+app.use('/convert', convert);
+
+var extract = require('./routes/extract.js');
+app.use('/video/extract', extract);
 
 
 require('express-readme')(app, {
