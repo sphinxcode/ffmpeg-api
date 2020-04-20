@@ -12,28 +12,23 @@ FFMPEG API is provided as Docker image for easy consumption.
 
 == Endpoints
 
-* `POST /mp3` - Convert audio file in request body to mp3
-* `POST /mp4` - Convert video file in request body to mp4
-* `POST /jpg` - Convert image file to jpg
+* `POST /convert/audio/to/mp3` - Convert audio file in request body to mp3
+* `POST /convert/video/to/mp4` - Convert video file in request body to mp4
+* `POST /convert/image/to/jpg` - Convert image file to jpg
 * `GET /` - API Readme
 
 == Usage
 
+=== Convert
+
 Convert audio/video/image files using the API.
 
-* `curl -F "file=@input.wav" 127.0.0.1:3000/mp3  > output.mp3`
-* `curl -F "file=@input.m4a" 127.0.0.1:3000/mp3  > output.mp3`
-* `curl -F "file=@input.mov" 127.0.0.1:3000/mp4  > output.mp4`
-* `curl -F "file=@input.mp4" 127.0.0.1:3000/mp4  > output.mp4`
-* `curl -F "file=@input.tiff" 127.0.0.1:3000/jpg  > output.jpg`
-* `curl -F "file=@input.png" 127.0.0.1:3000/jpg  > output.jpg`
-
-== Configuration and New Endpoints
-
-You can change the ffmpeg conversion settings or add new endpoints by editing 
-the link:src/endpoints.js[src/endpoints.js] file. 
-
-See also https://github.com/fluent-ffmpeg/node-fluent-ffmpeg[node-fluent-ffmpeg] for more information.
+* `curl -F "file=@input.wav" 127.0.0.1:3000/convert/audio/to/mp3  > output.mp3`
+* `curl -F "file=@input.m4a" 127.0.0.1:3000/convert/audio/to/mp3  > output.mp3`
+* `curl -F "file=@input.mov" 127.0.0.1:3000/convert/video/to/mp4  > output.mp4`
+* `curl -F "file=@input.mp4" 127.0.0.1:3000/convert/videp/to/mp4  > output.mp4`
+* `curl -F "file=@input.tiff" 127.0.0.1:3000/convert/image/to/jpg  > output.jpg`
+* `curl -F "file=@input.png" 127.0.0.1:3000/convert/image/to/jpg  > output.jpg`
 
 == Docker image
 
