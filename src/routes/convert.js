@@ -12,25 +12,25 @@ router.post('/audio/to/mp3', function (req, res,next) {
 
     res.locals.conversion="audio"
     res.locals.format="mp3"
-    next()
+    return convert(req,res,next);
 });
 
 router.post('/video/to/mp4', function (req, res,next) {
 
     res.locals.conversion="video"
     res.locals.format="mp4"
-    next()
+    return convert(req,res,next);
 });
 
 router.post('/image/to/jpg', function (req, res,next) {
 
     res.locals.conversion="image"
     res.locals.format="jpg"
-    next()
+    return convert(req,res,next);
 });
 
 // convert audio or video or image to mp3 or mp4 or jpg
-router.post('*', function (req, res,next) {
+function convert(req,res,next) {
     let format = res.locals.format;
     let conversion = res.locals.conversion;
     logger.debug(`path: ${req.path}, conversion: ${conversion}, format: ${format}`);
@@ -100,6 +100,6 @@ router.post('*', function (req, res,next) {
             })
             .save(outputFile);
         
-});
+}
 
 module.exports = router
