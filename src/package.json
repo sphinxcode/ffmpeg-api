@@ -15,6 +15,7 @@
     "express": "^4.17.1",
     "express-readme": "0.0.5",
     "fluent-ffmpeg": "^2.1.2",
+    "express-list-endpoints": "4.0.1",
     "fs": "0.0.1-security",
     "unique-filename": "^1.1.1",
     "winston": "^3.2.1"

@@ -1,13 +1,9 @@
-const fs = require('fs');
 const express = require('express');
 const app = express();
-const Busboy = require('busboy');
 const compression = require('compression');
-const ffmpeg = require('fluent-ffmpeg');
-const uniqueFilename = require('unique-filename');
-const endpoints = require('./endpoints.js');
+const all_routes = require('express-list-endpoints');
 
-const logger = require('./logger.js');
+const logger = require('./utils/logger.js');
 const constants = require('./constants.js');
 
 fileSizeLimit = constants.fileSizeLimit;
@@ -27,103 +23,22 @@ process.on('SIGTERM', handle);
 
 app.use(compression());
 
-for (let prop in endpoints.types) {
-    if (endpoints.types.hasOwnProperty(prop)) {
-        let ffmpegParams = endpoints.types[prop];
-        let bytes = 0;
-        app.post('/' + prop, function(req, res) {
-            let hitLimit = false;
-            let fileName = '';
-            let savedFile = uniqueFilename('/tmp/');
-            let busboy = new Busboy({
-                headers: req.headers,
-                limits: {
-                    files: 1,
-                    fileSize: fileSizeLimit,
-            }});
-            busboy.on('filesLimit', function() {
-                logger.error(`upload file size limit hit. max file size ${fileSizeLimit} bytes.`)
-            });
+//routes to handle file upload for all POST methods
+var upload = require('./routes/uploadfile.js');
+app.use(upload);
 
-            busboy.on('file', function(
-                fieldname,
-                file,
-                filename,
-                encoding,
-                mimetype
-            ) {
-                file.on('limit', function(file) {
-                    hitLimit = true;
-                    let msg = `${filename} exceeds max size limit. max file size ${fileSizeLimit} bytes.`
-                    logger.error(msg);
-                    res.writeHead(500, {'Connection': 'close'});
-                    res.end(JSON.stringify({error: msg}));
-                });
-                let log = {
-                    file: filename,
-                    encoding: encoding,
-                    mimetype: mimetype,
-                };
-                logger.debug(`file:${log.file}, encoding: ${log.encoding}, mimetype: ${log.mimetype}`);
-                file.on('data', function(data) {
-                    bytes += data.length;
-                });
-                file.on('end', function(data) {
-                    log.bytes = bytes;
-                    logger.debug(`file: ${log.file}, encoding: ${log.encoding}, mimetype: ${log.mimetype}, bytes: ${log.bytes}`);
-                });
+//test route for development
+var test = require('./routes/test.js')
+app.use('/test', test)
 
-                fileName = filename;
-                logger.debug(`uploading ${fileName}`)
-                let written = file.pipe(fs.createWriteStream(savedFile));
-                if (written) {
-                    logger.debug(`${fileName} saved, path: ${savedFile}`)
-                }
-            });
-            busboy.on('finish', function() {
-                if (hitLimit) {
-                    fs.unlinkSync(savedFile);
-                    return;
-                }
-                logger.debug(`upload complete. file: ${fileName}`)
-                let outputFile = savedFile + '.' + ffmpegParams.extension;
-                logger.debug(`begin conversion from ${savedFile} to ${outputFile}`)
-                
-                //ffmpeg processing...
-                let ffmpegConvertCommand = ffmpeg(savedFile);
-                ffmpegConvertCommand
-                        .renice(15)
-                        .outputOptions(ffmpegParams.outputOptions)
-                        .on('error', function(err) {
-                            logger.error(`${err}`);
-                            fs.unlinkSync(savedFile);
-                            res.writeHead(500, {'Connection': 'close'});
-                            res.end(JSON.stringify({error: `${err}`}));
-                        })
-                        .on('end', function() {
-                            fs.unlinkSync(savedFile);
-                            logger.debug(`starting download to client ${savedFile}`);
+//routes to convert audio/video/image files to mp3/mp4/jpg
+var convert = require('./routes/convert.js')
+app.use('/convert', convert)
 
-                            res.download(outputFile, null, function(err) {
-                                if (err) {
-                                    logger.error(`download ${err}`);
-                                }
-                                logger.debug(`deleting ${outputFile}`);
-                                if (fs.unlinkSync(outputFile)) {
-                                    logger.debug(`deleted ${outputFile}`);
-                                }
-                            });
-                        })
-                        .save(outputFile);
-            });
-            return req.pipe(busboy);
-        });
-    }
-}
 
 require('express-readme')(app, {
     filename: 'index.md',
-    routes: ['/', '/readme'],
+    routes: ['/'],
 });
 
 
@@ -140,6 +55,25 @@ server.on('connection', function(socket) {
     server.keepAliveTimeout = timeout;
 });
 
-app.use(function(req, res, next) {
-  res.status(404).send(JSON.stringify({error: 'route not found'})+'\n');
+app.get('/endpoints', function(req, res) {
+    let code = 200;
+    res.writeHead(code, {'content-type' : 'text/plain'});
+    res.end("Endpoints:\n\n"+JSON.stringify(all_routes(app),null,2)+'\n');
 });
+
+app.use(function(req, res, next) {
+  res.status(404).send({error: 'route not found'});
+});
+
+
+//custom error handler to return text/plain and message only
+app.use(function(err, req, res, next){
+    let code = err.statusCode || 500;
+    let message = err.message;
+    res.writeHead(code, {'content-type' : 'text/plain'});
+    res.end(`${err.message}\n`);
+    
+});
+
+
+logger.debug(JSON.stringify(all_routes(app)));
