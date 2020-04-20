@@ -7,6 +7,7 @@ var router = express.Router()
 const logger = require('../utils/logger.js')
 
 //route to handle file upload in all POST requests
+//file is saved to res.locals.savedFile and can be used in subsequent routes.
 router.use(function (req, res,next) {
     
     if(req.method == "POST")
