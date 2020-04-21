@@ -2,6 +2,8 @@ var express = require('express')
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
 
+const constants = require('../constants.js');
+
 var router = express.Router()
 const logger = require('../utils/logger.js')
 
@@ -76,25 +78,24 @@ function convert(req,res,next) {
     //ffmpeg processing... converting file...
     let ffmpegConvertCommand = ffmpeg(savedFile);
     ffmpegConvertCommand
-            .renice(15)
+            .renice(constants.defaultFFMPEGProcessPriority)
             .outputOptions(ffmpegParams.outputOptions)
             .on('error', function(err) {
                 logger.error(`${err}`);
-                fs.unlinkSync(savedFile);
+                utils.deleteFile(savedFile);
                 res.writeHead(500, {'Connection': 'close'});
                 res.end(JSON.stringify({error: `${err}`}));
             })
             .on('end', function() {
-                fs.unlinkSync(savedFile);
+                utils.deleteFile(savedFile);
                 logger.debug(`starting download to client ${savedFile}`);
 
                 res.download(outputFile, null, function(err) {
                     if (err) {
                         logger.error(`download ${err}`);
                     }
-                    logger.debug(`deleting ${outputFile}`);
-                    if (fs.unlinkSync(outputFile)) {
-                        logger.debug(`deleted ${outputFile}`);
+                    else {
+                        utils.deleteFile(`${outputFile}`);
                     }
                 });
             })

@@ -74,7 +74,7 @@ router.use(function (req, res,next) {
         });
         busboy.on('finish', function() {
             if (hitLimit) {
-                fs.unlinkSync(savedFile);
+                utils.deleteFile(savedFile);
                 return;
             }
             logger.debug(`upload complete. file: ${fileName}`)

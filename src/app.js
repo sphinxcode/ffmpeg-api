@@ -7,7 +7,6 @@ const logger = require('./utils/logger.js');
 const constants = require('./constants.js');
 
 fileSizeLimit = constants.fileSizeLimit;
-port = 3000;
 timeout = 3600000;
 
 // catch SIGINT and SIGTERM and exit
@@ -45,7 +44,7 @@ require('express-readme')(app, {
 });
 
 
-const server = app.listen(port, function() {
+const server = app.listen(constants.serverPort, function() {
     let host = server.address().address;
     let port = server.address().port;
     logger.info('listening http://'+host+':'+port)
