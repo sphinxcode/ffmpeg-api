@@ -5,10 +5,10 @@ const uniqueFilename = require('unique-filename');
 var archiver = require('archiver');
 
 const constants = require('../constants.js');
+const logger = require('../utils/logger.js');
+const utils = require('../utils/utils.js');
 
-var router = express.Router()
-const logger = require('../utils/logger.js')
-const utils = require('../utils/utils.js')
+var router = express.Router();
 
 
 //routes for /video/extract
@@ -29,24 +29,8 @@ router.post('/images', function (req, res,next) {
 router.get('/download/:filename', function (req, res,next) {
     //download extracted image
     let filename = req.params.filename;
-    let deleteFile = req.query.delete || "true";
-
     let file = `/tmp/${filename}`
-    logger.debug(`starting download to client ${file}`);
-    res.download(file, filename, function(err) {
-        if (err) {
-            logger.error(`download ${err}`);
-        }
-        else
-        {
-            //delete file if no delete=no query parameter
-            if (deleteFile === "true" || deleteFile === "yes")
-            {
-                utils.deleteFile(file);
-            }
-        }
-    });
-
+    return utils.downloadFile(file,null,req,res,next);
 });
 
 // extract audio or images from video
@@ -68,9 +52,18 @@ function extract(req,res,next) {
     if (extract === "audio"){
         format = "wav"
         ffmpegParams.outputOptions=[
-            `-ac 1` ,
+            '-vn',
             `-f ${format}` 
         ];    
+        let monoAudio = req.query.mono || "yes";
+        if (monoAudio === "yes" || monoAudio === "true")
+        {
+            logger.debug("extracting audio, 1 channel only")
+            ffmpegParams.outputOptions.push('-ac 1')
+        }
+        else{
+            logger.debug("extracting audio, all channels")
+        }
     }
 
     ffmpegParams.extension = format;
@@ -82,7 +75,7 @@ function extract(req,res,next) {
     var uniqueFileNamePrefix = outputFile.replace("/tmp/","");
     logger.debug(`uniqueFileNamePrefix ${uniqueFileNamePrefix}`);
 
-    //ffmpeg processing... converting file...
+    //ffmpeg processing...
     var ffmpegCommand = ffmpeg(savedFile);
     ffmpegCommand = ffmpegCommand
             .renice(constants.defaultFFMPEGProcessPriority)
@@ -94,6 +87,21 @@ function extract(req,res,next) {
                 res.end(JSON.stringify({error: `${err}`}));
             })
 
+    //extract audio track from video as wav
+    if (extract === "audio"){
+        let wavFile = `${outputFile}.${format}`;
+        ffmpegCommand
+            .on('end', function() {
+                logger.debug(`ffmpeg process ended`);
+
+                utils.deleteFile(savedFile)
+                return utils.downloadFile(wavFile,null,req,res,next);
+            })
+          .save(wavFile);
+        
+        }
+
+    //extract png images from video
     if (extract === "images"){
         ffmpegCommand
             .output(`${outputFile}-%04d.png`)
@@ -154,20 +162,8 @@ function extract(req,res,next) {
                             utils.deleteFile(file);
                         }
 
-                        //return tar.gz
-                        logger.debug(`starting download to client ${compressFilePath}`);
-                        res.download(compressFilePath, compressFileName, function(err) {
-                            if (err) {
-                                logger.error(`download gzip error: ${err}`);
-                                return next(err);
-                            }
-                            else
-                            {
-                                logger.debug(`download complete ${compressFilePath}`);
-                                utils.deleteFile(compressFilePath);
-                            }
-                        });
-
+                        //return compressed file
+                        return utils.downloadFile(compressFilePath,compressFileName,req,res,next);
 
                     });
                     // Wait for streams to complete
@@ -181,7 +177,7 @@ function extract(req,res,next) {
                     logger.debug(`output files in /tmp`);
                     var responseJson = {};
                     responseJson["totalfiles"] = files.length;
-                    responseJson["description"] = "Extracted image files and URLs to download them. By default, downloading image also deletes the image from server. Note port in the URL may be different if server is running on Docker/Kubernetes.";
+                    responseJson["description"] = `Extracted image files and URLs to download them. By default, downloading image also deletes the image from server. Note that port ${constants.serverPort} in the URL may not be the same as the real port, especially if server is running on Docker/Kubernetes.`;
                     var filesArray=[];
                     for (var i=0; i < files.length; i++) {
                         var file = files[i];             
@@ -197,12 +193,8 @@ function extract(req,res,next) {
                 }
             })
             .run();
-  //          .save(outputFile);
 
     }
-
-
-
 
 }
 

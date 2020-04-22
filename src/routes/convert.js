@@ -1,33 +1,40 @@
 var express = require('express')
-const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
 
 const constants = require('../constants.js');
+const logger = require('../utils/logger.js')
+const utils = require('../utils/utils.js')
 
 var router = express.Router()
-const logger = require('../utils/logger.js')
 
 
 //routes for /convert
 //adds conversion type and format to res.locals. to be used in final post function
 router.post('/audio/to/mp3', function (req, res,next) {
 
-    res.locals.conversion="audio"
-    res.locals.format="mp3"
+    res.locals.conversion="audio";
+    res.locals.format="mp3";
+    return convert(req,res,next);
+});
+
+router.post('/audio/to/wav', function (req, res,next) {
+
+    res.locals.conversion="audio";
+    res.locals.format="wav";
     return convert(req,res,next);
 });
 
 router.post('/video/to/mp4', function (req, res,next) {
 
-    res.locals.conversion="video"
-    res.locals.format="mp4"
+    res.locals.conversion="video";
+    res.locals.format="mp4";
     return convert(req,res,next);
 });
 
 router.post('/image/to/jpg', function (req, res,next) {
 
-    res.locals.conversion="image"
-    res.locals.format="jpg"
+    res.locals.conversion="image";
+    res.locals.format="jpg";
     return convert(req,res,next);
 });
 
@@ -36,22 +43,24 @@ function convert(req,res,next) {
     let format = res.locals.format;
     let conversion = res.locals.conversion;
     logger.debug(`path: ${req.path}, conversion: ${conversion}, format: ${format}`);
-    if (conversion == undefined || format == undefined)
-    {
-        res.status(400).send("Invalid convert URL. Use one of: /convert/image/to/jpg, /convert/audio/to/mp3 or /convert/video/to/mp4.\n");
-        return;
-    }
 
     let ffmpegParams ={
         extension: format
     };
     if (conversion == "image")
     {
-        ffmpegParams.outputOptions= ['-pix_fmt yuv422p']
+        ffmpegParams.outputOptions= ['-pix_fmt yuv422p'];
     }
     if (conversion == "audio")
     {
-        ffmpegParams.outputOptions=['-codec:a libmp3lame' ]
+        if (format === "mp3")
+        {
+            ffmpegParams.outputOptions=['-codec:a libmp3lame' ];
+        }
+        if (format === "wav")
+        {
+            ffmpegParams.outputOptions=['-codec:a pcm_s16le' ];
+        }
     }
     if (conversion == "video")
     {
@@ -88,16 +97,7 @@ function convert(req,res,next) {
             })
             .on('end', function() {
                 utils.deleteFile(savedFile);
-                logger.debug(`starting download to client ${savedFile}`);
-
-                res.download(outputFile, null, function(err) {
-                    if (err) {
-                        logger.error(`download ${err}`);
-                    }
-                    else {
-                        utils.deleteFile(`${outputFile}`);
-                    }
-                });
+                return utils.downloadFile(outputFile,null,req,res,next);
             })
             .save(outputFile);
         

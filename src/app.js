@@ -26,28 +26,27 @@ app.use(compression());
 var upload = require('./routes/uploadfile.js');
 app.use(upload);
 
-//test route for development
-var test = require('./routes/test.js');
-app.use('/test', test);
-
 //routes to convert audio/video/image files to mp3/mp4/jpg
 var convert = require('./routes/convert.js');
 app.use('/convert', convert);
 
+//routes to extract images or audio from video
 var extract = require('./routes/extract.js');
 app.use('/video/extract', extract);
 
+//routes to probe file info
+var probe = require('./routes/probe.js');
+app.use('/probe', probe);
 
 require('express-readme')(app, {
     filename: 'index.md',
     routes: ['/'],
 });
 
-
 const server = app.listen(constants.serverPort, function() {
     let host = server.address().address;
     let port = server.address().port;
-    logger.info('listening http://'+host+':'+port)
+    logger.info('Server started and listening http://'+host+':'+port)
 });
 
 server.on('connection', function(socket) {
@@ -58,9 +57,9 @@ server.on('connection', function(socket) {
 });
 
 app.get('/endpoints', function(req, res) {
-    let code = 200;
-    res.writeHead(code, {'content-type' : 'text/plain'});
-    res.end("Endpoints:\n\n"+JSON.stringify(all_routes(app),null,2)+'\n');
+    res.status(200).send(all_routes(app));
+    //res.writeHead(200, {'content-type' : 'text/plain'});
+    //res.end("Endpoints:\n\n"+JSON.stringify(all_routes(app),null,2)+'\n');
 });
 
 app.use(function(req, res, next) {
@@ -76,6 +75,3 @@ app.use(function(err, req, res, next){
     res.end(`${err.message}\n`);
     
 });
-
-
-logger.debug(JSON.stringify(all_routes(app)));

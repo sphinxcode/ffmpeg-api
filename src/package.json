@@ -4,10 +4,6 @@
   "description": "API for FFMPEG, media conversion utility",
   "main": "app.js",
   "bin" : { "ffmpegapi" : "./app.js" },
-  "author": {
-    "name": "Paul Visco",
-    "email": "paul.visco@gmail.com"
-  },
   "license": "ISC",
   "dependencies": {
     "busboy": "~0.3.1",
