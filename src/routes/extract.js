@@ -176,15 +176,16 @@ function extract(req,res,next) {
 
                     logger.debug(`output files in /tmp`);
                     var responseJson = {};
+                    let externalPort = constants.externalPort || constants.serverPort;
                     responseJson["totalfiles"] = files.length;
-                    responseJson["description"] = `Extracted image files and URLs to download them. By default, downloading image also deletes the image from server. Note that port ${constants.serverPort} in the URL may not be the same as the real port, especially if server is running on Docker/Kubernetes.`;
+                    responseJson["description"] = `Extracted image files and URLs to download them. By default, downloading image also deletes the image from server. Note that port ${externalPort} in the URL may not be the same as the real port, especially if server is running on Docker/Kubernetes.`;
                     var filesArray=[];
                     for (var i=0; i < files.length; i++) {
                         var file = files[i];             
                         logger.debug("file: " + file);
                         var fileJson={};
                         fileJson["name"] = file;
-                        fileJson[`url`] = `${req.protocol}://${req.hostname}:${constants.serverPort}${req.baseUrl}/download/${file}`;
+                        fileJson[`url`] = `${req.protocol}://${req.hostname}:${externalPort}${req.baseUrl}/download/${file}`;
                         filesArray.push(fileJson);                    
                     }             
                     responseJson["files"] = filesArray;

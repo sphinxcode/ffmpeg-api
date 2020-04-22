@@ -1,3 +1,7 @@
+=== 0.3
+
+* Added EXTERNAL_PORT env variable.
+
 === 0.2
 
 * Added extract images and audio endpoints.
