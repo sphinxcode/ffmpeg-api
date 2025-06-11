@@ -37,7 +37,7 @@ FFMPEG API is provided as Docker image for easy consumption.
 * Run image in foreground:
 ** `docker run -it --rm --name ffmpeg-api -p 3000:3000 ffmpeg-api`
 * Run image in background:
-** `docker run -d -name ffmpeg-api -p 3000:3000 ffmpeg-api`
+** `docker run -d --name ffmpeg-api -p 3000:3000 ffmpeg-api`
 
 === Use existing
 
