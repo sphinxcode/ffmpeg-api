@@ -31,7 +31,7 @@ jobs:
     - name: Set image tag
       id: set_image_tag
       run: |
-        if [[ "${{ inputs.tagname }}" == "main" ]]; then
+        if [[ "${{ inputs.tagname }}" == "main" || "${{ inputs.tagname }}" == "master" ]]; then
           echo "tag_name=latest" >> $GITHUB_ENV
         else
           echo "tag_name=${{ inputs.tagname }}" >> $GITHUB_ENV
