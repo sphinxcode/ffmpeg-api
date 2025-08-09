@@ -5,6 +5,9 @@ const logger = require('../utils/logger.js')
 const utils = require('../utils/utils.js')
 var router = express.Router()
 
+// Middleware for URL-based requests
+router.use('/*/from/url', express.json())
+
 //routes for /convert
 //adds conversion type and format to res.locals. to be used in final post function
 router.post('/audio/to/mp3', function (req, res,next) {
@@ -67,12 +70,48 @@ router.post('/video/to/mov/from/url', function (req, res,next) {
     return convertFromUrl(req,res,next);
 });
 
-// Audio extraction from video URLs
-router.post('/video/extract/audio/from/url', function (req, res,next) {
-    res.locals.conversion="extract_audio";
-    res.locals.format="wav";
-    res.locals.fromUrl=true;
-    return convertFromUrl(req,res,next);
+// Audio extraction from video URLs - standalone handler
+router.post('/video/extract/audio/from/url', express.json(), function (req, res, next) {
+    const { url } = req.body;
+    
+    if (!url) {
+        res.writeHead(400, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({error: 'URL parameter is required'}));
+        return;
+    }
+    
+    // Get mono parameter from URL query (default to true for single channel)
+    const mono = req.query.mono !== 'no';
+    
+    logger.debug(`Audio extraction from URL: ${url}, mono: ${mono}`);
+    
+    let outputOptions;
+    if (mono) {
+        outputOptions = ['-vn', '-codec:a pcm_s16le', '-ar 44100', '-ac 1'];
+    } else {
+        outputOptions = ['-vn', '-codec:a pcm_s16le', '-ar 44100', '-ac 2'];
+    }
+    
+    // Generate unique output filename
+    const timestamp = Date.now();
+    let outputFile = `/tmp/extracted-audio-${timestamp}.wav`;
+    logger.debug(`Begin audio extraction from ${url} to ${outputFile}`)
+    
+    //ffmpeg processing... extracting audio from URL...
+    let ffmpegCommand = ffmpeg(url);
+    ffmpegCommand
+            .renice(constants.defaultFFMPEGProcessPriority)
+            .outputOptions(outputOptions)
+            .on('error', function(err) {
+                logger.error(`Audio extraction error: ${err}`);
+                res.writeHead(500, {'Connection': 'close'});
+                res.end(JSON.stringify({error: `Audio extraction failed: ${err}`}));
+            })
+            .on('end', function() {
+                logger.debug(`Audio extraction completed: ${outputFile}`);
+                return utils.downloadFile(outputFile, null, req, res, next);
+            })
+            .save(outputFile);
 });
 
 // convert audio or video or image to mp3 or mp4 or jpg
