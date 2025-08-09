@@ -31,7 +31,7 @@ router.post('/image/to/jpg', function (req, res,next) {
     return convert(req,res,next);
 });
 
-// NEW URL-based routes
+// URL-based routes (existing)
 router.post('/audio/to/mp3/from/url', function (req, res,next) {
     res.locals.conversion="audio";
     res.locals.format="mp3";
@@ -72,6 +72,23 @@ router.post('/video/extract/audio/from/url', function (req, res,next) {
     res.locals.conversion="extract_audio";
     res.locals.format="wav";
     res.locals.fromUrl=true;
+    return convertFromUrl(req,res,next);
+});
+
+// NEW: Google Drive optimized routes
+router.post('/audio/to/mp3/from/gdrive', function (req, res,next) {
+    res.locals.conversion="audio";
+    res.locals.format="mp3";
+    res.locals.fromUrl=true;
+    res.locals.gdrive=true;
+    return convertFromUrl(req,res,next);
+});
+
+router.post('/video/extract/audio/from/gdrive', function (req, res,next) {
+    res.locals.conversion="extract_audio";
+    res.locals.format="wav";
+    res.locals.fromUrl=true;
+    res.locals.gdrive=true;
     return convertFromUrl(req,res,next);
 });
 
@@ -157,7 +174,7 @@ function convert(req,res,next) {
                 '-bufsize 1000k',
                 '-vf scale=-2:640',
                 '-threads 8',
-                '-codec:a libfdk_aac',
+                '-codec:a aac', // Changed from libfdk_aac for compatibility
                 '-b:a 128k',
             ];
         } else if (format === "avi") {
@@ -198,7 +215,49 @@ function convert(req,res,next) {
         
 }
 
-// NEW FUNCTION: convert from URL
+// Google Drive URL processor to extract file ID
+function processGoogleDriveUrl(driveUrl) {
+    let fileId = null;
+    
+    const patterns = [
+        /\/file\/d\/([a-zA-Z0-9-_]+)/,  // /file/d/FILE_ID
+        /id=([a-zA-Z0-9-_]+)/,          // id=FILE_ID
+        /\/open\?id=([a-zA-Z0-9-_]+)/   // /open?id=FILE_ID
+    ];
+    
+    for (const pattern of patterns) {
+        const match = driveUrl.match(pattern);
+        if (match) {
+            fileId = match[1];
+            break;
+        }
+    }
+    
+    if (!fileId) {
+        throw new Error('Invalid Google Drive URL format');
+    }
+    
+    return fileId;
+}
+
+// Research-backed Google Drive bypass methods
+function getGoogleDriveDirectUrls(fileId) {
+    return [
+        // Method 1: Confirmation bypass (works for most large files)
+        `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`,
+        
+        // Method 2: Alternative endpoint (backup)
+        `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`,
+        
+        // Method 3: Direct export (for some file types)
+        `https://docs.google.com/uc?export=download&id=${fileId}`,
+        
+        // Method 4: Base64 encoded bypass
+        `https://drive.google.com/uc?export=download&id=${fileId}&confirm=${Buffer.from('t').toString('base64')}`
+    ];
+}
+
+// Enhanced convertFromUrl with research-backed Google Drive bypass
 function convertFromUrl(req,res,next) {
     const { url } = req.body;
     
@@ -210,9 +269,31 @@ function convertFromUrl(req,res,next) {
     
     let format = res.locals.format;
     let conversion = res.locals.conversion;
+    let processedUrl = url;
+    
     logger.debug(`URL conversion - path: ${req.path}, conversion: ${conversion}, format: ${format}, url: ${url}`);
     
-    let ffmpegParams ={
+    // Process Google Drive URLs with multiple bypass methods
+    if (url.includes('drive.google.com')) {
+        try {
+            const fileId = processGoogleDriveUrl(url);
+            const directUrls = getGoogleDriveDirectUrls(fileId);
+            
+            // Use the first bypass method (most reliable based on research)
+            processedUrl = directUrls[0];
+            
+            logger.info(`Google Drive bypass applied for file ID: ${fileId}`);
+            logger.debug(`Using bypass URL: ${processedUrl}`);
+            
+        } catch (error) {
+            logger.error(`Google Drive URL processing failed: ${error.message}`);
+            res.writeHead(400, {'Content-Type': 'application/json'});
+            res.end(JSON.stringify({error: `Google Drive URL error: ${error.message}`}));
+            return;
+        }
+    }
+    
+    let ffmpegParams = {
         extension: format
     };
     
@@ -262,38 +343,129 @@ function convertFromUrl(req,res,next) {
         }
     }
     
+    if (conversion == "extract_audio")
+    {
+        const mono = req.query.mono !== 'no';
+        
+        if (mono) {
+            ffmpegParams.outputOptions=['-vn', '-codec:a pcm_s16le', '-ar 44100', '-ac 1'];
+        } else {
+            ffmpegParams.outputOptions=['-vn', '-codec:a pcm_s16le', '-ar 44100', '-ac 2'];
+        }
+    }
+    
     if (conversion == "video")
     {
-        ffmpegParams.outputOptions=[
-            '-codec:v libx264',
-            '-profile:v high',
-            '-r 15',
-            '-crf 23',
-            '-preset ultrafast',
-            '-b:v 500k',
-            '-maxrate 500k',
-            '-bufsize 1000k',
-            '-vf scale=-2:640',
-            '-threads 8',
-            '-codec:a libfdk_aac',
-            '-b:a 128k',
-        ];
+        if (format === "mp4") {
+            ffmpegParams.outputOptions=[
+                '-codec:v libx264',
+                '-profile:v high',
+                '-r 15',
+                '-crf 23',
+                '-preset ultrafast',
+                '-b:v 500k',
+                '-maxrate 500k',
+                '-bufsize 1000k',
+                '-vf scale=-2:640',
+                '-threads 8',
+                '-codec:a aac', // Changed from libfdk_aac for better compatibility
+                '-b:a 128k',
+            ];
+        } else if (format === "avi") {
+            ffmpegParams.outputOptions=[
+                '-codec:v libx264',
+                '-codec:a libmp3lame',
+                '-b:a 128k',
+            ];
+        } else if (format === "mov") {
+            ffmpegParams.outputOptions=[
+                '-codec:v libx264',
+                '-codec:a aac',
+                '-b:a 128k',
+            ];
+        }
     }
     
     // Generate unique output filename
     const timestamp = Date.now();
     let outputFile = `/tmp/converted-${timestamp}.${ffmpegParams.extension}`;
-    logger.debug(`begin URL conversion from ${url} to ${outputFile}`)
+    logger.debug(`begin URL conversion from ${processedUrl} to ${outputFile}`)
+    
+    // FFmpeg with enhanced options for Google Drive streaming
+    let inputOptions = [
+        '-reconnect 1',                    // Auto-reconnect on connection loss
+        '-reconnect_streamed 1',           // Reconnect for streamed content  
+        '-reconnect_delay_max 5',          // Max delay between reconnects
+        '-timeout 60000000',               // 60 second timeout (microseconds)
+        '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"', // Mimic browser
+        '-headers "Accept: */*"',          // Accept all content types
+        '-multiple_requests 1',            // Allow multiple HTTP requests
+        '-seekable 0'                      // Don't assume stream is seekable
+    ];
+    
+    // Additional options for Google Drive files
+    if (url.includes('drive.google.com')) {
+        inputOptions.push(
+            '-headers "Range: bytes=0-"',              // Request from beginning
+            '-headers "Accept-Encoding: identity"',    // No compression
+            '-protocol_whitelist "file,http,https,tcp,tls"' // Allow protocols
+        );
+    }
     
     //ffmpeg processing... converting from URL...
-    let ffmpegConvertCommand = ffmpeg(url);
+    let ffmpegConvertCommand = ffmpeg(processedUrl);
     ffmpegConvertCommand
             .renice(constants.defaultFFMPEGProcessPriority)
+            .inputOptions(inputOptions)
             .outputOptions(ffmpegParams.outputOptions)
             .on('error', function(err) {
                 logger.error(`URL conversion error: ${err}`);
+                
+                // If Google Drive and first method fails, try alternative URLs
+                if (url.includes('drive.google.com') && processedUrl.includes('confirm=t')) {
+                    logger.warn('Primary Google Drive bypass failed, trying alternatives...');
+                    
+                    try {
+                        const fileId = processGoogleDriveUrl(url);
+                        const alternativeUrls = getGoogleDriveDirectUrls(fileId);
+                        
+                        // Try second bypass method
+                        if (alternativeUrls.length > 1) {
+                            const fallbackUrl = alternativeUrls[1];
+                            logger.info(`Retrying with alternative URL: ${fallbackUrl}`);
+                            
+                            let retryCommand = ffmpeg(fallbackUrl);
+                            retryCommand
+                                .renice(constants.defaultFFMPEGProcessPriority)
+                                .inputOptions(inputOptions)
+                                .outputOptions(ffmpegParams.outputOptions)
+                                .on('error', function(retryErr) {
+                                    logger.error(`Alternative URL also failed: ${retryErr}`);
+                                    utils.deleteFile(outputFile);
+                                    res.writeHead(500, {'Connection': 'close'});
+                                    res.end(JSON.stringify({error: `Google Drive conversion failed: ${retryErr.message}`}));
+                                })
+                                .on('end', function() {
+                                    logger.debug(`Alternative URL conversion completed: ${outputFile}`);
+                                    return utils.downloadFile(outputFile,null,req,res,next);
+                                })
+                                .save(outputFile);
+                            return;
+                        }
+                    } catch (e) {
+                        logger.error(`Alternative bypass failed: ${e.message}`);
+                    }
+                }
+                
+                // Original error handling
+                utils.deleteFile(outputFile);
                 res.writeHead(500, {'Connection': 'close'});
-                res.end(JSON.stringify({error: `URL conversion failed: ${err}`}));
+                res.end(JSON.stringify({error: `URL conversion failed: ${err.message}`}));
+            })
+            .on('progress', function(progress) {
+                if (progress.percent) {
+                    logger.debug(`Processing: ${Math.round(progress.percent)}% done`);
+                }
             })
             .on('end', function() {
                 logger.debug(`URL conversion completed: ${outputFile}`);
