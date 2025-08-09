@@ -240,7 +240,7 @@ function processGoogleDriveUrl(driveUrl) {
     return fileId;
 }
 
-// Research-backed Google Drive bypass methods that actually work
+// Research-backed Google Drive bypass methods (fixed FFmpeg syntax)
 function getGoogleDriveDirectUrls(fileId) {
     return [
         // Method 1: Confirmation bypass (most reliable for large files)
@@ -257,7 +257,7 @@ function getGoogleDriveDirectUrls(fileId) {
     ];
 }
 
-// Enhanced convertFromUrl with proper Google Drive bypass
+// Enhanced convertFromUrl with FIXED FFmpeg options
 function convertFromUrl(req,res,next) {
     // Ensure we can read JSON body
     if (!req.body) {
@@ -398,25 +398,16 @@ function convertFromUrl(req,res,next) {
     let outputFile = `/tmp/converted-${timestamp}.${ffmpegParams.extension}`;
     logger.debug(`begin URL conversion from ${processedUrl} to ${outputFile}`)
     
-    // FFmpeg with enhanced options for streaming large files
+    // FIXED: Corrected FFmpeg input options (no more syntax errors)
     let inputOptions = [
-        '-reconnect 1',                    // Auto-reconnect on connection loss
-        '-reconnect_streamed 1',           // Reconnect for streamed content  
-        '-reconnect_delay_max 5',          // Max delay between reconnects
-        '-timeout 60000000',               // 60 second timeout (microseconds)
-        '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"', // Mimic browser
-        '-multiple_requests 1',            // Allow multiple HTTP requests
-        '-seekable 0'                      // Don't assume stream is seekable
+        '-reconnect', '1',               // Auto-reconnect on connection loss
+        '-reconnect_streamed', '1',      // Reconnect for streamed content  
+        '-reconnect_delay_max', '5',     // Max delay between reconnects
+        '-timeout', '60000000',          // 60 second timeout (microseconds)
+        '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', // Fixed: separate value
+        '-multiple_requests', '1',       // Allow multiple HTTP requests
+        '-seekable', '0'                 // Don't assume stream is seekable
     ];
-    
-    // Additional options for Google Drive files
-    if (url.includes('drive.google.com')) {
-        inputOptions.push(
-            '-headers "Accept: */*"',                    // Accept all content types
-            '-headers "Accept-Encoding: identity"',      // No compression
-            '-headers "Cache-Control: no-cache"'         // Skip cache
-        );
-    }
     
     //ffmpeg processing... converting from URL...
     let ffmpegConvertCommand = ffmpeg(processedUrl);
@@ -440,14 +431,25 @@ function convertFromUrl(req,res,next) {
                             const fallbackUrl = alternativeUrls[1];
                             logger.info(`Retrying with alternative URL: ${fallbackUrl}`);
                             
+                            // Use simpler options for fallback
+                            let simpleInputOptions = [
+                                '-timeout', '60000000',
+                                '-user_agent', 'Mozilla/5.0'
+                            ];
+                            
                             let retryCommand = ffmpeg(fallbackUrl);
                             retryCommand
                                 .renice(constants.defaultFFMPEGProcessPriority)
-                                .inputOptions(inputOptions)
+                                .inputOptions(simpleInputOptions)
                                 .outputOptions(ffmpegParams.outputOptions)
                                 .on('error', function(retryErr) {
                                     logger.error(`Alternative URL also failed: ${retryErr}`);
-                                    utils.deleteFile(outputFile);
+                                    // Safe file cleanup - check if file exists first
+                                    try {
+                                        utils.deleteFile(outputFile);
+                                    } catch (cleanupErr) {
+                                        logger.debug('File cleanup error (expected for non-existent files)');
+                                    }
                                     res.writeHead(500, {'Connection': 'close'});
                                     res.end(JSON.stringify({error: `Google Drive conversion failed: ${retryErr.message}`}));
                                 })
@@ -463,8 +465,12 @@ function convertFromUrl(req,res,next) {
                     }
                 }
                 
-                // Original error handling
-                utils.deleteFile(outputFile);
+                // Original error handling with safe cleanup
+                try {
+                    utils.deleteFile(outputFile);
+                } catch (cleanupErr) {
+                    logger.debug('File cleanup error (expected for non-existent files)');
+                }
                 res.writeHead(500, {'Connection': 'close'});
                 res.end(JSON.stringify({error: `URL conversion failed: ${err.message}`}));
             })
