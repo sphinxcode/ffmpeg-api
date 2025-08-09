@@ -2,6 +2,7 @@ var express = require('express')
 const fs = require('fs');
 const Busboy = require('busboy');
 const uniqueFilename = require('unique-filename');
+const utils = require('../utils/utils.js')
 
 var router = express.Router()
 const logger = require('../utils/logger.js')
@@ -12,7 +13,20 @@ router.use(function (req, res,next) {
     
     if(req.method == "POST")
     {
-        logger.debug(`${__filename} path: ${req.path}`);
+        // CRITICAL FIX: Skip JSON requests - let them pass through to route handlers
+        const contentType = req.headers['content-type'] || '';
+        if (contentType.includes('application/json')) {
+            logger.debug(`${__filename} skipping JSON request for path: ${req.path}`);
+            return next();
+        }
+        
+        // Also skip URL-based routes that expect JSON
+        if (req.path.includes('/from/url') || req.path.includes('/from/gdrive')) {
+            logger.debug(`${__filename} skipping URL-based route: ${req.path}`);
+            return next();
+        }
+        
+        logger.debug(`${__filename} processing multipart upload for path: ${req.path}`);
 
         let bytes = 0;
         let hitLimit = false;
