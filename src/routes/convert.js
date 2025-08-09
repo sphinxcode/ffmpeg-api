@@ -51,20 +51,38 @@ function convert(req,res,next) {
         // Get speed parameter from URL query (default to 1.0 if not provided)
         const speed = parseFloat(req.query.speed) || 1.0;
         
+        // Build atempo filter for speeds > 2.0 (FFmpeg limitation)
+        let atempoFilter = '';
+        if (speed !== 1.0) {
+            if (speed <= 2.0) {
+                atempoFilter = `atempo=${speed}`;
+            } else {
+                // For speeds > 2.0, chain multiple atempo filters
+                let remainingSpeed = speed;
+                let filters = [];
+                while (remainingSpeed > 2.0) {
+                    filters.push('atempo=2.0');
+                    remainingSpeed = remainingSpeed / 2.0;
+                }
+                if (remainingSpeed > 1.0) {
+                    filters.push(`atempo=${remainingSpeed}`);
+                }
+                atempoFilter = filters.join(',');
+            }
+        }
+        
         if (format === "mp3")
         {
             ffmpegParams.outputOptions=['-codec:a libmp3lame'];
-            // Add speed filter if speed is not 1.0
-            if (speed !== 1.0) {
-                ffmpegParams.outputOptions.push(`-filter:a atempo=${speed}`);
+            if (atempoFilter) {
+                ffmpegParams.outputOptions.push(`-filter:a ${atempoFilter}`);
             }
         }
         if (format === "wav")
         {
             ffmpegParams.outputOptions=['-codec:a pcm_s16le'];
-            // Add speed filter if speed is not 1.0
-            if (speed !== 1.0) {
-                ffmpegParams.outputOptions.push(`-filter:a atempo=${speed}`);
+            if (atempoFilter) {
+                ffmpegParams.outputOptions.push(`-filter:a ${atempoFilter}`);
             }
         }
     }
