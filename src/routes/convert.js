@@ -240,30 +240,37 @@ function processGoogleDriveUrl(driveUrl) {
     return fileId;
 }
 
-// Research-backed Google Drive bypass methods
+// Research-backed Google Drive bypass methods that actually work
 function getGoogleDriveDirectUrls(fileId) {
     return [
-        // Method 1: Confirmation bypass (works for most large files)
+        // Method 1: Confirmation bypass (most reliable for large files)
         `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`,
         
-        // Method 2: Alternative endpoint (backup)
+        // Method 2: Alternative export endpoint
+        `https://docs.google.com/uc?export=download&id=${fileId}&confirm=t`,
+        
+        // Method 3: Using googleusercontent domain
         `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`,
         
-        // Method 3: Direct export (for some file types)
-        `https://docs.google.com/uc?export=download&id=${fileId}`,
-        
-        // Method 4: Base64 encoded bypass
-        `https://drive.google.com/uc?export=download&id=${fileId}&confirm=${Buffer.from('t').toString('base64')}`
+        // Method 4: Direct with authuser parameter
+        `https://drive.google.com/uc?export=download&id=${fileId}&authuser=0&confirm=t`
     ];
 }
 
-// Enhanced convertFromUrl with research-backed Google Drive bypass
+// Enhanced convertFromUrl with proper Google Drive bypass
 function convertFromUrl(req,res,next) {
+    // Ensure we can read JSON body
+    if (!req.body) {
+        res.writeHead(400, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({error: 'Request body is required'}));
+        return;
+    }
+    
     const { url } = req.body;
     
     if (!url) {
         res.writeHead(400, {'Content-Type': 'application/json'});
-        res.end(JSON.stringify({error: 'URL parameter is required'}));
+        res.end(JSON.stringify({error: 'URL parameter is required in request body'}));
         return;
     }
     
@@ -273,13 +280,13 @@ function convertFromUrl(req,res,next) {
     
     logger.debug(`URL conversion - path: ${req.path}, conversion: ${conversion}, format: ${format}, url: ${url}`);
     
-    // Process Google Drive URLs with multiple bypass methods
+    // Process Google Drive URLs with bypass methods
     if (url.includes('drive.google.com')) {
         try {
             const fileId = processGoogleDriveUrl(url);
             const directUrls = getGoogleDriveDirectUrls(fileId);
             
-            // Use the first bypass method (most reliable based on research)
+            // Use the first bypass method (most reliable)
             processedUrl = directUrls[0];
             
             logger.info(`Google Drive bypass applied for file ID: ${fileId}`);
@@ -391,14 +398,13 @@ function convertFromUrl(req,res,next) {
     let outputFile = `/tmp/converted-${timestamp}.${ffmpegParams.extension}`;
     logger.debug(`begin URL conversion from ${processedUrl} to ${outputFile}`)
     
-    // FFmpeg with enhanced options for Google Drive streaming
+    // FFmpeg with enhanced options for streaming large files
     let inputOptions = [
         '-reconnect 1',                    // Auto-reconnect on connection loss
         '-reconnect_streamed 1',           // Reconnect for streamed content  
         '-reconnect_delay_max 5',          // Max delay between reconnects
         '-timeout 60000000',               // 60 second timeout (microseconds)
         '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"', // Mimic browser
-        '-headers "Accept: */*"',          // Accept all content types
         '-multiple_requests 1',            // Allow multiple HTTP requests
         '-seekable 0'                      // Don't assume stream is seekable
     ];
@@ -406,9 +412,9 @@ function convertFromUrl(req,res,next) {
     // Additional options for Google Drive files
     if (url.includes('drive.google.com')) {
         inputOptions.push(
-            '-headers "Range: bytes=0-"',              // Request from beginning
-            '-headers "Accept-Encoding: identity"',    // No compression
-            '-protocol_whitelist "file,http,https,tcp,tls"' // Allow protocols
+            '-headers "Accept: */*"',                    // Accept all content types
+            '-headers "Accept-Encoding: identity"',      // No compression
+            '-headers "Cache-Control: no-cache"'         // Skip cache
         );
     }
     
