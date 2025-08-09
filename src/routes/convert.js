@@ -1,38 +1,31 @@
 var express = require('express')
 const ffmpeg = require('fluent-ffmpeg');
-
 const constants = require('../constants.js');
 const logger = require('../utils/logger.js')
 const utils = require('../utils/utils.js')
-
 var router = express.Router()
-
 
 //routes for /convert
 //adds conversion type and format to res.locals. to be used in final post function
 router.post('/audio/to/mp3', function (req, res,next) {
-
     res.locals.conversion="audio";
     res.locals.format="mp3";
     return convert(req,res,next);
 });
 
 router.post('/audio/to/wav', function (req, res,next) {
-
     res.locals.conversion="audio";
     res.locals.format="wav";
     return convert(req,res,next);
 });
 
 router.post('/video/to/mp4', function (req, res,next) {
-
     res.locals.conversion="video";
     res.locals.format="mp4";
     return convert(req,res,next);
 });
 
 router.post('/image/to/jpg', function (req, res,next) {
-
     res.locals.conversion="image";
     res.locals.format="jpg";
     return convert(req,res,next);
@@ -43,25 +36,39 @@ function convert(req,res,next) {
     let format = res.locals.format;
     let conversion = res.locals.conversion;
     logger.debug(`path: ${req.path}, conversion: ${conversion}, format: ${format}`);
-
+    
     let ffmpegParams ={
         extension: format
     };
+    
     if (conversion == "image")
     {
         ffmpegParams.outputOptions= ['-pix_fmt yuv422p'];
     }
+    
     if (conversion == "audio")
     {
+        // Get speed parameter from URL query (default to 1.0 if not provided)
+        const speed = parseFloat(req.query.speed) || 1.0;
+        
         if (format === "mp3")
         {
-            ffmpegParams.outputOptions=['-codec:a libmp3lame' ];
+            ffmpegParams.outputOptions=['-codec:a libmp3lame'];
+            // Add speed filter if speed is not 1.0
+            if (speed !== 1.0) {
+                ffmpegParams.outputOptions.push(`-filter:a atempo=${speed}`);
+            }
         }
         if (format === "wav")
         {
-            ffmpegParams.outputOptions=['-codec:a pcm_s16le' ];
+            ffmpegParams.outputOptions=['-codec:a pcm_s16le'];
+            // Add speed filter if speed is not 1.0
+            if (speed !== 1.0) {
+                ffmpegParams.outputOptions.push(`-filter:a atempo=${speed}`);
+            }
         }
     }
+    
     if (conversion == "video")
     {
         ffmpegParams.outputOptions=[
@@ -79,11 +86,11 @@ function convert(req,res,next) {
             '-b:a 128k',
         ];
     }
-
+    
     let savedFile = res.locals.savedFile;
     let outputFile = savedFile + '-output.' + ffmpegParams.extension;
     logger.debug(`begin conversion from ${savedFile} to ${outputFile}`)
-
+    
     //ffmpeg processing... converting file...
     let ffmpegConvertCommand = ffmpeg(savedFile);
     ffmpegConvertCommand
