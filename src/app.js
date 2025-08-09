@@ -2,10 +2,8 @@ const express = require('express');
 const app = express();
 const compression = require('compression');
 const all_routes = require('express-list-endpoints');
-
 const logger = require('./utils/logger.js');
 const constants = require('./constants.js');
-
 fileSizeLimit = constants.fileSizeLimit;
 timeout = 3600000;
 
@@ -14,13 +12,18 @@ timeout = 3600000;
 function handle(signal) {
     logger.info(`Received ${signal}. Exiting...`);
     process.exit(1)
-  }  
+}  
+
 //SIGINT is typically CTRL-C
 process.on('SIGINT', handle);
 //SIGTERM is sent to terminate process, for example docker stop sends SIGTERM
 process.on('SIGTERM', handle);
 
 app.use(compression());
+
+// ADD JSON MIDDLEWARE - This fixes the "Unsupported content type" error
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 //routes to handle file upload for all POST methods
 var upload = require('./routes/uploadfile.js');
@@ -65,7 +68,6 @@ app.get('/endpoints', function(req, res) {
 app.use(function(req, res, next) {
   res.status(404).send({error: 'route not found'});
 });
-
 
 //custom error handler to return text/plain and message only
 app.use(function(err, req, res, next){
