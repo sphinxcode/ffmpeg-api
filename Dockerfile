@@ -28,7 +28,7 @@ RUN npm install -g pkg
 RUN apk add --no-cache font-noto ttf-liberation && \
     mkdir -p /fonts/inter /fonts/liberation && \
     find /usr/share/fonts -iname "NotoSans-Regular.ttf" | head -1 | xargs -I{} cp {} /fonts/inter/Inter-Regular.ttf && \
-    cp /usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf /fonts/liberation/
+    find /usr/share/fonts -iname "LiberationSans-Regular.ttf" | head -1 | xargs -I{} cp {} /fonts/liberation/LiberationSans-Regular.ttf
 
 ENV PKG_CACHE_PATH /usr/cache
 
