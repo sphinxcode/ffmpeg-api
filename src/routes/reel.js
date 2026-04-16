@@ -52,7 +52,7 @@ router.post('/render', function(req, res, next) {
         video_url, text,
         brightness, duration,
         font, font_size,
-        emoji, audio_url
+        emoji, audio_url, audio_start
     } = req.body;
 
     if (!video_url) {
@@ -97,7 +97,8 @@ router.post('/render', function(req, res, next) {
     let cmd = ffmpeg(video_url);
 
     if (audio_url) {
-        cmd.addInput(audio_url);
+        const audioSeek = parseFloat(audio_start) || 0;
+        cmd.addInput(audio_url).inputOptions(audioSeek > 0 ? [`-ss ${audioSeek}`] : []);
         cmd.complexFilter([
             `[0:v]${videoFilter}[v]`,
             `[1:a]volume=-20dB[a]`
