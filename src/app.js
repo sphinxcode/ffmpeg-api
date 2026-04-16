@@ -41,6 +41,10 @@ app.use('/video/extract', extract);
 var probe = require('./routes/probe.js');
 app.use('/probe', probe);
 
+//routes to render reels (text overlay + brightness + crop + trim)
+var reel = require('./routes/reel.js');
+app.use('/reel', reel);
+
 require('express-readme')(app, {
     filename: 'index.md',
     routes: ['/'],

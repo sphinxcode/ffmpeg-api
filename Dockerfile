@@ -37,6 +37,9 @@ RUN pkg --targets node18-alpine-x64 /usr/src/app/package.json
 
 FROM jrottenberg/ffmpeg:4.2-alpine311
 
+# Install fonts for drawtext (FreeSans = clean sans-serif)
+RUN apk add --no-cache fontconfig ttf-freefont && fc-cache -f
+
 # Create user and change workdir
 RUN adduser --disabled-password --home /home/ffmpgapi ffmpgapi
 WORKDIR /home/ffmpgapi
