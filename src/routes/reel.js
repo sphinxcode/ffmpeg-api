@@ -4,11 +4,15 @@ const logger = require('../utils/logger.js')
 const utils = require('../utils/utils.js')
 var router = express.Router()
 
-const FONT_PATH = '/usr/share/fonts/truetype/inter/Inter-Regular.ttf';
-const DEFAULT_BRIGHTNESS = -0.25;
-const DEFAULT_DURATION = 7;
-const DEFAULT_FPS = 24;
-const FONT_SIZE = 44;
+const FONTS = {
+    inter:     '/usr/share/fonts/truetype/inter/Inter-Regular.ttf',
+    helvetica: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+};
+const DEFAULT_FONT       = 'inter';
+const DEFAULT_BRIGHTNESS = -0.35;
+const DEFAULT_DURATION   = 7;
+const DEFAULT_FPS        = 24;
+const DEFAULT_FONT_SIZE  = 48;
 const MAX_CHARS_PER_LINE = 30;
 
 function escapeDrawtext(text) {
@@ -21,7 +25,6 @@ function escapeDrawtext(text) {
         .replace(/,/g, '\\,');
 }
 
-// Word-wrap a single line to MAX_CHARS_PER_LINE, returns array of lines
 function wordWrap(line) {
     const words = line.trim().split(/\s+/);
     const wrapped = [];
@@ -40,9 +43,17 @@ function wordWrap(line) {
 }
 
 // POST /reel/render
-// Body (JSON): { video_url, text, brightness?, duration?, audio_url? }
+// Body (JSON): {
+//   video_url,  text,        brightness?,  duration?,
+//   font?,      font_size?,  emoji?,       audio_url?
+// }
 router.post('/render', function(req, res, next) {
-    const { video_url, text, brightness, duration, audio_url } = req.body;
+    const {
+        video_url, text,
+        brightness, duration,
+        font, font_size,
+        emoji, audio_url
+    } = req.body;
 
     if (!video_url) {
         res.writeHead(400, {'Content-Type': 'application/json'});
@@ -55,27 +66,33 @@ router.post('/render', function(req, res, next) {
         return;
     }
 
-    const bri = parseFloat(brightness) || DEFAULT_BRIGHTNESS;
-    const dur = parseInt(duration) || DEFAULT_DURATION;
+    const bri      = parseFloat(brightness) || DEFAULT_BRIGHTNESS;
+    const dur      = parseInt(duration)     || DEFAULT_DURATION;
+    const fontSize = parseInt(font_size)    || DEFAULT_FONT_SIZE;
+    const fontKey  = (font || DEFAULT_FONT).toLowerCase();
+    const fontPath = FONTS[fontKey] || FONTS[DEFAULT_FONT];
     const timestamp = Date.now();
     const outputFile = `/tmp/reel-${timestamp}.mp4`;
 
-    // Split input lines, word-wrap each, cap total at 4 lines
+    // Split, word-wrap, cap at 4 lines, optionally append emoji to last line
     const inputLines = text.split('\n').filter(l => l.trim());
-    const lines = inputLines.flatMap(l => wordWrap(l)).slice(0, 4);
+    let lines = inputLines.flatMap(l => wordWrap(l)).slice(0, 4);
+    if (emoji && lines.length > 0) {
+        lines[lines.length - 1] = lines[lines.length - 1] + ' ' + emoji;
+    }
 
-    const lineHeight = 56;
+    const lineHeight   = Math.round(fontSize * 1.3);
     const bottomMargin = 140;
 
     const drawtextFilters = lines.map((line, i) => {
-        const yPos = `h-${bottomMargin + (lines.length - 1 - i) * lineHeight}`;
+        const yPos   = `h-${bottomMargin + (lines.length - 1 - i) * lineHeight}`;
         const escaped = escapeDrawtext(line.trim());
-        return `drawtext=fontfile=${FONT_PATH}:text='${escaped}':fontcolor=white:fontsize=${FONT_SIZE}:x=(w-text_w)/2:y=${yPos}:borderw=0`;
+        return `drawtext=fontfile=${fontPath}:text='${escaped}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=${yPos}:borderw=0`;
     }).join(',');
 
     const videoFilter = `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,eq=brightness=${bri},${drawtextFilters}`;
 
-    logger.debug(`reel render — lines: ${lines.length}, brightness: ${bri}, duration: ${dur}s`);
+    logger.debug(`reel render — font: ${fontKey}, size: ${fontSize}, brightness: ${bri}, dur: ${dur}s, emoji: ${emoji || 'none'}, audio: ${audio_url || 'none'}`);
 
     let cmd = ffmpeg(video_url);
 

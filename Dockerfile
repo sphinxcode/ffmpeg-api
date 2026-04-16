@@ -23,11 +23,13 @@ RUN apk add --no-cache git curl unzip
 # install pkg
 RUN npm install -g pkg
 
-# Download Inter font (Alpine 3.16 has newer curl/TLS — can reach GitHub)
-RUN mkdir -p /fonts && \
+# Download Inter + Liberation Sans (Helvetica metric-compatible, free)
+RUN mkdir -p /fonts/inter /fonts/liberation && \
     curl -fL "https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip" -o /tmp/inter.zip && \
-    unzip -j /tmp/inter.zip "*Inter-Regular.ttf" -d /fonts/ && \
-    rm /tmp/inter.zip
+    unzip -j /tmp/inter.zip "*Inter-Regular.ttf" -d /fonts/inter/ && \
+    rm /tmp/inter.zip && \
+    apk add --no-cache ttf-liberation && \
+    cp /usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf /fonts/liberation/
 
 ENV PKG_CACHE_PATH /usr/cache
 
@@ -47,8 +49,9 @@ FROM jrottenberg/ffmpeg:4.2-alpine311
 RUN apk add --no-cache fontconfig
 
 # Copy Inter font from build stage and register it
-RUN mkdir -p /usr/share/fonts/truetype/inter
-COPY --from=build /fonts/Inter-Regular.ttf /usr/share/fonts/truetype/inter/Inter-Regular.ttf
+RUN mkdir -p /usr/share/fonts/truetype/inter /usr/share/fonts/truetype/liberation
+COPY --from=build /fonts/inter/Inter-Regular.ttf /usr/share/fonts/truetype/inter/Inter-Regular.ttf
+COPY --from=build /fonts/liberation/LiberationSans-Regular.ttf /usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf
 RUN fc-cache -f
 
 # Create user and change workdir
