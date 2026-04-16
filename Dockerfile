@@ -7,7 +7,7 @@
 #     - NodeJS
 #     - fluent-ffmpeg
 #
-#   For more on Fluent-FFMPEG, see 
+#   For more on Fluent-FFMPEG, see
 #
 #            https://github.com/fluent-ffmpeg/node-fluent-ffmpeg
 #
@@ -18,10 +18,16 @@
 
 FROM node:18.14-alpine3.16 as build
 
-RUN apk add --no-cache git
+RUN apk add --no-cache git curl unzip
 
 # install pkg
 RUN npm install -g pkg
+
+# Download Inter font (Alpine 3.16 has newer curl/TLS — can reach GitHub)
+RUN mkdir -p /fonts && \
+    curl -fL "https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip" -o /tmp/inter.zip && \
+    unzip -j /tmp/inter.zip "Inter Desktop/Inter-Regular.ttf" -d /fonts/ && \
+    rm /tmp/inter.zip
 
 ENV PKG_CACHE_PATH /usr/cache
 
@@ -37,13 +43,13 @@ RUN pkg --targets node18-alpine-x64 /usr/src/app/package.json
 
 FROM jrottenberg/ffmpeg:4.2-alpine311
 
-# Install Inter font for drawtext (clean sans-serif, TikTok-standard look)
-RUN apk add --no-cache fontconfig curl unzip && \
-    mkdir -p /usr/share/fonts/truetype/inter && \
-    curl -fL "https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip" -o /tmp/inter.zip && \
-    unzip -j /tmp/inter.zip "Inter Desktop/Inter-Regular.ttf" -d /usr/share/fonts/truetype/inter/ && \
-    fc-cache -f && \
-    rm -f /tmp/inter.zip
+# Install fontconfig only (font file copied from build stage)
+RUN apk add --no-cache fontconfig
+
+# Copy Inter font from build stage and register it
+RUN mkdir -p /usr/share/fonts/truetype/inter
+COPY --from=build /fonts/Inter-Regular.ttf /usr/share/fonts/truetype/inter/Inter-Regular.ttf
+RUN fc-cache -f
 
 # Create user and change workdir
 RUN adduser --disabled-password --home /home/ffmpgapi ffmpgapi
@@ -61,4 +67,3 @@ USER ffmpgapi
 
 ENTRYPOINT []
 CMD [ "./ffmpegapi" ]
-
