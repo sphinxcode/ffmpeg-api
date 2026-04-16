@@ -23,11 +23,11 @@ RUN apk add --no-cache git curl unzip
 # install pkg
 RUN npm install -g pkg
 
-# Download Inter + Liberation Sans (Helvetica metric-compatible, free)
+# Download Inter TTF directly (no zip — avoids 26MB download)
+# Liberation Sans = free Helvetica metric-compatible substitute
 RUN mkdir -p /fonts/inter /fonts/liberation && \
-    curl -fL "https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip" -o /tmp/inter.zip && \
-    unzip -j /tmp/inter.zip "*Inter-Regular.ttf" -d /fonts/inter/ && \
-    rm /tmp/inter.zip && \
+    curl -fL "https://raw.githubusercontent.com/rsms/inter/v4.0/docs/font-files/Inter-Regular.ttf" \
+         -o /fonts/inter/Inter-Regular.ttf && \
     apk add --no-cache ttf-liberation && \
     cp /usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf /fonts/liberation/
 
