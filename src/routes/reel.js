@@ -5,10 +5,10 @@ const utils = require('../utils/utils.js')
 var router = express.Router()
 
 const FONTS = {
-    inter:     '/usr/share/fonts/truetype/inter/Inter-Regular.ttf',
-    helvetica: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+    helvetica: '/usr/share/fonts/helvetica/Helvetica.ttf',
+    inter:     '/usr/share/fonts/helvetica/Helvetica.ttf',
 };
-const DEFAULT_FONT       = 'inter';
+const DEFAULT_FONT       = 'helvetica';
 const DEFAULT_BRIGHTNESS = -0.35;
 const DEFAULT_DURATION   = 7;
 const DEFAULT_FPS        = 24;
@@ -52,7 +52,7 @@ router.post('/render', function(req, res, next) {
         video_url, text,
         brightness, duration,
         font, font_size,
-        emoji, audio_url, audio_start,
+        audio_url, audio_start,
         text_position
     } = req.body;
 
@@ -75,12 +75,9 @@ router.post('/render', function(req, res, next) {
     const timestamp = Date.now();
     const outputFile = `/tmp/reel-${timestamp}.mp4`;
 
-    // Split, word-wrap, cap at 4 lines, optionally append emoji to last line
+    // Split, word-wrap, cap at 4 lines
     const inputLines = text.split('\n').filter(l => l.trim());
-    let lines = inputLines.flatMap(l => wordWrap(l)).slice(0, 4);
-    if (emoji && lines.length > 0) {
-        lines[lines.length - 1] = lines[lines.length - 1] + ' ' + emoji;
-    }
+    const lines = inputLines.flatMap(l => wordWrap(l)).slice(0, 4);
 
     const lineHeight    = Math.round(fontSize * 1.3);
     const totalHeight   = lines.length * lineHeight;
@@ -98,7 +95,7 @@ router.post('/render', function(req, res, next) {
 
     const videoFilter = `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,eq=brightness=${bri},${drawtextFilters}`;
 
-    logger.debug(`reel render — font: ${fontKey}, size: ${fontSize}, brightness: ${bri}, dur: ${dur}s, emoji: ${emoji || 'none'}, audio: ${audio_url || 'none'}`);
+    logger.debug(`reel render — font: ${fontKey}, size: ${fontSize}, brightness: ${bri}, dur: ${dur}s, audio: ${audio_url || 'none'}`);
 
     let cmd = ffmpeg(video_url);
 

@@ -18,22 +18,10 @@
 
 FROM node:18.14-alpine3.16 as build
 
-RUN apk add --no-cache git curl unzip
+RUN apk add --no-cache git
 
 # install pkg
 RUN npm install -g pkg
-
-# Inter (official) from release zip + Liberation Sans (Helvetica substitute)
-RUN apk add --no-cache ttf-liberation unzip curl && \
-    mkdir -p /fonts/inter /fonts/liberation && \
-    curl -fL "https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip" -o /tmp/inter.zip && \
-    echo "=== TTF files in zip ===" && unzip -l /tmp/inter.zip | grep -i "\.ttf" | head -20 && \
-    unzip -j /tmp/inter.zip "*Regular.ttf" -d /fonts/inter/ && \
-    ls /fonts/inter/ && \
-    FIRST=$(ls /fonts/inter/*.ttf 2>/dev/null | head -1) && \
-    [ -n "$FIRST" ] && mv "$FIRST" /fonts/inter/Inter-Regular.ttf && \
-    rm /tmp/inter.zip && \
-    find /usr/share/fonts -iname "LiberationSans-Regular.ttf" | head -1 | xargs -I{} cp {} /fonts/liberation/LiberationSans-Regular.ttf
 
 ENV PKG_CACHE_PATH /usr/cache
 
@@ -49,13 +37,13 @@ RUN pkg --targets node18-alpine-x64 /usr/src/app/package.json
 
 FROM jrottenberg/ffmpeg:4.2-alpine311
 
-# Install fontconfig only (font file copied from build stage)
+# Install fontconfig
 RUN apk add --no-cache fontconfig
 
-# Copy Inter font from build stage and register it
-RUN mkdir -p /usr/share/fonts/truetype/inter /usr/share/fonts/truetype/liberation
-COPY --from=build /fonts/inter/Inter-Regular.ttf /usr/share/fonts/truetype/inter/Inter-Regular.ttf
-COPY --from=build /fonts/liberation/LiberationSans-Regular.ttf /usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf
+# Copy Helvetica fonts from repo
+RUN mkdir -p /usr/share/fonts/helvetica
+COPY ./helvetica-255/Helvetica.ttf /usr/share/fonts/helvetica/Helvetica.ttf
+COPY ./helvetica-255/Helvetica-Bold.ttf /usr/share/fonts/helvetica/Helvetica-Bold.ttf
 RUN fc-cache -f
 
 # Create user and change workdir
