@@ -52,7 +52,8 @@ router.post('/render', function(req, res, next) {
         video_url, text,
         brightness, duration,
         font, font_size,
-        emoji, audio_url, audio_start
+        emoji, audio_url, audio_start,
+        text_position
     } = req.body;
 
     if (!video_url) {
@@ -81,11 +82,16 @@ router.post('/render', function(req, res, next) {
         lines[lines.length - 1] = lines[lines.length - 1] + ' ' + emoji;
     }
 
-    const lineHeight   = Math.round(fontSize * 1.3);
-    const bottomMargin = 140;
+    const lineHeight    = Math.round(fontSize * 1.3);
+    const totalHeight   = lines.length * lineHeight;
+    const position      = (text_position || 'center').toLowerCase();
 
     const drawtextFilters = lines.map((line, i) => {
-        const yPos   = `h-${bottomMargin + (lines.length - 1 - i) * lineHeight}`;
+        // center: vertically center the whole text block
+        // bottom: anchor to lower portion (140px from bottom)
+        const yPos = position === 'bottom'
+            ? `h-${140 + (lines.length - 1 - i) * lineHeight}`
+            : `(h-${totalHeight})/2+${i * lineHeight}`;
         const escaped = escapeDrawtext(line.trim());
         return `drawtext=fontfile=${fontPath}:text='${escaped}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=${yPos}:borderw=0`;
     }).join(',');
