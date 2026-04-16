@@ -23,11 +23,16 @@ RUN apk add --no-cache git curl unzip
 # install pkg
 RUN npm install -g pkg
 
-# Noto Sans = clean modern sans-serif (inter slot)
-# Liberation Sans = Helvetica metric-compatible (helvetica slot)
-RUN apk add --no-cache font-noto ttf-liberation && \
+# Inter (official) from release zip + Liberation Sans (Helvetica substitute)
+RUN apk add --no-cache ttf-liberation unzip curl && \
     mkdir -p /fonts/inter /fonts/liberation && \
-    find /usr/share/fonts -iname "NotoSans-Regular.ttf" | head -1 | xargs -I{} cp {} /fonts/inter/Inter-Regular.ttf && \
+    curl -fL "https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip" -o /tmp/inter.zip && \
+    echo "=== TTF files in zip ===" && unzip -l /tmp/inter.zip | grep -i "\.ttf" | head -20 && \
+    unzip -j /tmp/inter.zip "*Regular.ttf" -d /fonts/inter/ && \
+    ls /fonts/inter/ && \
+    FIRST=$(ls /fonts/inter/*.ttf 2>/dev/null | head -1) && \
+    [ -n "$FIRST" ] && mv "$FIRST" /fonts/inter/Inter-Regular.ttf && \
+    rm /tmp/inter.zip && \
     find /usr/share/fonts -iname "LiberationSans-Regular.ttf" | head -1 | xargs -I{} cp {} /fonts/liberation/LiberationSans-Regular.ttf
 
 ENV PKG_CACHE_PATH /usr/cache
