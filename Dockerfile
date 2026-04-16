@@ -26,7 +26,7 @@ RUN npm install -g pkg
 # Download Inter font (Alpine 3.16 has newer curl/TLS — can reach GitHub)
 RUN mkdir -p /fonts && \
     curl -fL "https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip" -o /tmp/inter.zip && \
-    unzip -j /tmp/inter.zip "Inter Desktop/Inter-Regular.ttf" -d /fonts/ && \
+    unzip -j /tmp/inter.zip "*Inter-Regular.ttf" -d /fonts/ && \
     rm /tmp/inter.zip
 
 ENV PKG_CACHE_PATH /usr/cache
