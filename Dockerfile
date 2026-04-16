@@ -37,8 +37,13 @@ RUN pkg --targets node18-alpine-x64 /usr/src/app/package.json
 
 FROM jrottenberg/ffmpeg:4.2-alpine311
 
-# Install fonts for drawtext (FreeSans = clean sans-serif)
-RUN apk add --no-cache fontconfig ttf-freefont && fc-cache -f
+# Install Inter font for drawtext (clean sans-serif, TikTok-standard look)
+RUN apk add --no-cache fontconfig curl unzip && \
+    mkdir -p /usr/share/fonts/truetype/inter && \
+    curl -fL "https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip" -o /tmp/inter.zip && \
+    unzip -j /tmp/inter.zip "Inter Desktop/Inter-Regular.ttf" -d /usr/share/fonts/truetype/inter/ && \
+    fc-cache -f && \
+    rm -f /tmp/inter.zip
 
 # Create user and change workdir
 RUN adduser --disabled-password --home /home/ffmpgapi ffmpgapi

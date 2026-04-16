@@ -4,19 +4,39 @@ const logger = require('../utils/logger.js')
 const utils = require('../utils/utils.js')
 var router = express.Router()
 
-const FONT_PATH = '/usr/share/fonts/truetype/freefont/FreeSans.ttf';
-const DEFAULT_BRIGHTNESS = -0.4;
+const FONT_PATH = '/usr/share/fonts/truetype/inter/Inter-Regular.ttf';
+const DEFAULT_BRIGHTNESS = -0.25;
 const DEFAULT_DURATION = 7;
 const DEFAULT_FPS = 24;
+const FONT_SIZE = 44;
+const MAX_CHARS_PER_LINE = 30;
 
 function escapeDrawtext(text) {
     return text
         .replace(/\\/g, '\\\\')
-        .replace(/'/g, "\u2019")   // smart quote — avoids drawtext escape hell
+        .replace(/'/g, '\u2019')
         .replace(/:/g, '\\:')
         .replace(/\[/g, '\\[')
         .replace(/\]/g, '\\]')
         .replace(/,/g, '\\,');
+}
+
+// Word-wrap a single line to MAX_CHARS_PER_LINE, returns array of lines
+function wordWrap(line) {
+    const words = line.trim().split(/\s+/);
+    const wrapped = [];
+    let current = '';
+    for (const word of words) {
+        const candidate = current ? `${current} ${word}` : word;
+        if (candidate.length > MAX_CHARS_PER_LINE && current) {
+            wrapped.push(current);
+            current = word;
+        } else {
+            current = candidate;
+        }
+    }
+    if (current) wrapped.push(current);
+    return wrapped;
 }
 
 // POST /reel/render
@@ -40,19 +60,22 @@ router.post('/render', function(req, res, next) {
     const timestamp = Date.now();
     const outputFile = `/tmp/reel-${timestamp}.mp4`;
 
-    const lines = text.split('\n').filter(l => l.trim()).slice(0, 3);
-    const lineHeight = 62;
-    const bottomMargin = 100;
+    // Split input lines, word-wrap each, cap total at 4 lines
+    const inputLines = text.split('\n').filter(l => l.trim());
+    const lines = inputLines.flatMap(l => wordWrap(l)).slice(0, 4);
+
+    const lineHeight = 56;
+    const bottomMargin = 140;
 
     const drawtextFilters = lines.map((line, i) => {
         const yPos = `h-${bottomMargin + (lines.length - 1 - i) * lineHeight}`;
         const escaped = escapeDrawtext(line.trim());
-        return `drawtext=fontfile=${FONT_PATH}:text='${escaped}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=${yPos}:borderw=0`;
+        return `drawtext=fontfile=${FONT_PATH}:text='${escaped}':fontcolor=white:fontsize=${FONT_SIZE}:x=(w-text_w)/2:y=${yPos}:borderw=0`;
     }).join(',');
 
     const videoFilter = `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,eq=brightness=${bri},${drawtextFilters}`;
 
-    logger.debug(`reel render — url: ${video_url}, lines: ${lines.length}, brightness: ${bri}, duration: ${dur}s, audio: ${audio_url || 'none'}`);
+    logger.debug(`reel render — lines: ${lines.length}, brightness: ${bri}, duration: ${dur}s`);
 
     let cmd = ffmpeg(video_url);
 
