@@ -6,7 +6,13 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const path = require('path');
+const { execFile } = require('child_process');
+const util = require('util');
 var router = express.Router()
+
+const execFileAsync = util.promisify(execFile);
+
+// ── Audio download helper ────────────────────────────────────────────
 
 function normalizeAudioUrl(url) {
     // tmpfiles.org view page → direct download
@@ -50,11 +56,16 @@ function downloadToTemp(url) {
     });
 }
 
-const FONTS = {
-    inter:     '/usr/share/fonts/truetype/inter/Inter-Regular.ttf',
-    helvetica: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+// ── Text overlay helper (ImageMagick + pango) ────────────────────────
+//
+// FFmpeg drawtext cannot render color emoji (no FT_LOAD_COLOR in vf_drawtext.c).
+// Instead: render text+emoji to a transparent PNG via ImageMagick pango:,
+// then composite onto video with FFmpeg overlay filter.
+
+const FONT_NAMES = {
+    inter:     'Inter',
+    helvetica: 'Liberation Sans',
 };
-const EMOJI_FONT         = '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf';
 const DEFAULT_FONT       = 'inter';
 const DEFAULT_BRIGHTNESS = -0.35;
 const DEFAULT_DURATION   = 7;
@@ -62,14 +73,11 @@ const DEFAULT_FPS        = 24;
 const DEFAULT_FONT_SIZE  = 48;
 const MAX_CHARS_PER_LINE = 30;
 
-function escapeDrawtext(text) {
-    return text
-        .replace(/\\/g, '\\\\')
-        .replace(/'/g, '\u2019')
-        .replace(/:/g, '\\:')
-        .replace(/\[/g, '\\[')
-        .replace(/\]/g, '\\]')
-        .replace(/,/g, '\\,');
+function escapeXml(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 function wordWrap(line) {
@@ -89,10 +97,34 @@ function wordWrap(line) {
     return wrapped;
 }
 
+async function renderTextOverlay(textLines, emoji, fontSize, fontName, position, outputPath) {
+    const hasEmoji = !!(emoji && emoji.trim());
+    const allLines = [...textLines, ...(hasEmoji ? [emoji.trim()] : [])];
+    const content = escapeXml(allLines.join('\n'));
+    // pango-align center, font set to requested face + size, white text
+    const markup = `<span font="${fontName} ${fontSize}" foreground="white">${content}</span>`;
+
+    // Render at natural width (720px wrap) and auto height, then position on full canvas
+    const baseArgs = ['-background', 'none', '-size', '720x0', `pango:${markup}`];
+
+    const posArgs = position === 'bottom'
+        ? [
+            '-gravity', 'South', '-splice', '0x140',  // 140px transparent padding below text
+            '-gravity', 'South', '-extent', '720x1280' // anchor to bottom of full canvas
+          ]
+        : [
+            '-gravity', 'Center', '-extent', '720x1280' // center vertically on full canvas
+          ];
+
+    await execFileAsync('convert', [...baseArgs, ...posArgs, outputPath]);
+}
+
+// ── Route ─────────────────────────────────────────────────────────────
+
 // POST /reel/render
 // Body (JSON): {
 //   video_url,  text,        brightness?,  duration?,
-//   font?,      font_size?,  emoji?,       audio_url?
+//   font?,      font_size?,  emoji?,       audio_url?,  audio_start?,  text_position?
 // }
 router.post('/render', async function(req, res, next) {
     const {
@@ -118,70 +150,67 @@ router.post('/render', async function(req, res, next) {
     const dur      = parseInt(duration)     || DEFAULT_DURATION;
     const fontSize = parseInt(font_size)    || DEFAULT_FONT_SIZE;
     const fontKey  = (font || DEFAULT_FONT).toLowerCase();
-    const fontPath = FONTS[fontKey] || FONTS[DEFAULT_FONT];
+    const fontName = FONT_NAMES[fontKey] || FONT_NAMES[DEFAULT_FONT];
+    const position = (text_position || 'center').toLowerCase();
     const timestamp = Date.now();
     const outputFile = `/tmp/reel-${timestamp}.mp4`;
+    const overlayFile = `/tmp/overlay-${timestamp}.png`;
 
-    // Split, word-wrap, cap at 4 lines
+    // Word-wrap text into lines (cap at 4)
     const inputLines = text.split('\n').filter(l => l.trim());
     const lines = inputLines.flatMap(l => wordWrap(l)).slice(0, 4);
-    const hasEmoji = !!(emoji && emoji.trim());
-
-    const lineHeight  = Math.round(fontSize * 1.3);
-    // Total block height includes an extra line for emoji when present
-    const totalHeight = (lines.length + (hasEmoji ? 1 : 0)) * lineHeight;
-    const position    = (text_position || 'center').toLowerCase();
-
-    const allFilters = lines.map((line, i) => {
-        const yPos = position === 'bottom'
-            ? `h-${140 + (lines.length - 1 - i + (hasEmoji ? 1 : 0)) * lineHeight}`
-            : `(h-${totalHeight})/2+${i * lineHeight}`;
-        const escaped = escapeDrawtext(line.trim());
-        return `drawtext=fontfile=${fontPath}:text='${escaped}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=${yPos}:borderw=0`;
-    });
-
-    if (hasEmoji) {
-        const emojiY = position === 'bottom'
-            ? `h-${140}`
-            : `(h-${totalHeight})/2+${lines.length * lineHeight}`;
-        const escapedEmoji = escapeDrawtext(emoji.trim());
-        allFilters.push(
-            `drawtext=fontfile=${EMOJI_FONT}:text='${escapedEmoji}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=${emojiY}:borderw=0`
-        );
-    }
-
-    const drawtextFilters = allFilters.join(',');
-
-    const videoFilter = `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,eq=brightness=${bri},${drawtextFilters}`;
 
     logger.debug(`reel render — font: ${fontKey}, size: ${fontSize}, brightness: ${bri}, dur: ${dur}s, emoji: ${emoji || 'none'}, audio: ${audio_url || 'none'}`);
 
-    let localAudioPath = null;
+    // Step 1: render text + emoji overlay PNG via ImageMagick pango
+    try {
+        await renderTextOverlay(lines, emoji, fontSize, fontName, position, overlayFile);
+        logger.debug(`overlay rendered: ${overlayFile}`);
+    } catch (err) {
+        logger.error(`overlay render error: ${err}`);
+        res.writeHead(500, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({ error: `Text overlay failed: ${err.message}` }));
+        return;
+    }
 
+    // Step 2: download audio if provided
+    let localAudioPath = null;
     try {
         if (audio_url) {
             logger.debug(`downloading audio: ${audio_url}`);
             localAudioPath = await downloadToTemp(audio_url);
-            logger.debug(`audio saved to: ${localAudioPath}`);
+            logger.debug(`audio saved: ${localAudioPath}`);
         }
     } catch (err) {
         logger.error(`audio download error: ${err}`);
+        fs.unlink(overlayFile, () => {});
         res.writeHead(500, {'Content-Type': 'application/json'});
         res.end(JSON.stringify({ error: `Audio download failed: ${err.message}` }));
         return;
     }
 
+    // Step 3: FFmpeg — scale/crop/brightness + overlay PNG
+    const videoBase = `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,eq=brightness=${bri}`;
+
+    function cleanup() {
+        fs.unlink(overlayFile, () => {});
+        if (localAudioPath) fs.unlink(localAudioPath, () => {});
+    }
+
+    // inputs: [0]=video  [1]=overlay  [2]=audio (optional)
     let cmd = ffmpeg(video_url);
+    cmd.addInput(overlayFile);
 
     if (localAudioPath) {
         const audioSeek = parseFloat(audio_start) || 0;
         cmd.addInput(localAudioPath).inputOptions(audioSeek > 0 ? [`-ss ${audioSeek}`] : []);
         cmd.complexFilter([
-            `[0:v]${videoFilter}[v]`,
-            `[1:a]volume=-20dB[a]`
+            `[0:v]${videoBase}[v]`,
+            `[v][1:v]overlay=0:0[vout]`,
+            `[2:a]volume=-20dB[a]`
         ])
         .outputOptions([
-            '-map [v]',
+            '-map [vout]',
             '-map [a]',
             `-t ${dur}`,
             `-r ${DEFAULT_FPS}`,
@@ -193,8 +222,12 @@ router.post('/render', async function(req, res, next) {
             '-shortest'
         ]);
     } else {
-        cmd.videoFilters(videoFilter)
+        cmd.complexFilter([
+            `[0:v]${videoBase}[v]`,
+            `[v][1:v]overlay=0:0[vout]`
+        ])
         .outputOptions([
+            '-map [vout]',
             `-t ${dur}`,
             `-r ${DEFAULT_FPS}`,
             '-c:v libx264',
@@ -207,13 +240,13 @@ router.post('/render', async function(req, res, next) {
     cmd
         .on('error', function(err) {
             logger.error(`reel render error: ${err}`);
-            if (localAudioPath) fs.unlink(localAudioPath, () => {});
+            cleanup();
             res.writeHead(500, {'Connection': 'close'});
             res.end(JSON.stringify({ error: `Render failed: ${err.message}` }));
         })
         .on('end', function() {
             logger.debug(`reel render complete: ${outputFile}`);
-            if (localAudioPath) fs.unlink(localAudioPath, () => {});
+            cleanup();
             return utils.downloadFile(outputFile, null, req, res, next);
         })
         .save(outputFile);
