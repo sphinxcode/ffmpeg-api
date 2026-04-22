@@ -8,10 +8,18 @@ const https = require('https');
 const path = require('path');
 var router = express.Router()
 
+function normalizeAudioUrl(url) {
+    // tmpfiles.org view page → direct download
+    const m = url.match(/^(https?:\/\/tmpfiles\.org\/)(\d+\/.+)$/);
+    if (m) return `${m[1]}dl/${m[2]}`;
+    return url;
+}
+
 function downloadToTemp(url) {
     return new Promise((resolve, reject) => {
+        const resolved = normalizeAudioUrl(url);
         const timestamp = Date.now();
-        const ext = path.extname(new URL(url).pathname) || '.mp3';
+        const ext = path.extname(new URL(resolved).pathname) || '.mp3';
         const tmpPath = `/tmp/audio-${timestamp}${ext}`;
         const file = fs.createWriteStream(tmpPath);
 
@@ -26,13 +34,19 @@ function downloadToTemp(url) {
                     fs.unlink(tmpPath, () => {});
                     return reject(new Error(`Audio download failed: HTTP ${res.statusCode}`));
                 }
+                const ct = res.headers['content-type'] || '';
+                if (ct.includes('text/html')) {
+                    file.close();
+                    fs.unlink(tmpPath, () => {});
+                    return reject(new Error(`Audio URL returned HTML — provide a direct download link`));
+                }
                 res.pipe(file);
                 file.on('finish', () => file.close(() => resolve(tmpPath)));
                 file.on('error', (err) => { fs.unlink(tmpPath, () => {}); reject(err); });
             }).on('error', (err) => { fs.unlink(tmpPath, () => {}); reject(err); });
         }
 
-        fetch(url);
+        fetch(resolved);
     });
 }
 
