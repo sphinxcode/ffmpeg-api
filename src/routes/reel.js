@@ -54,6 +54,7 @@ const FONTS = {
     inter:     '/usr/share/fonts/truetype/inter/Inter-Regular.ttf',
     helvetica: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
 };
+const EMOJI_FONT         = '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf';
 const DEFAULT_FONT       = 'inter';
 const DEFAULT_BRIGHTNESS = -0.35;
 const DEFAULT_DURATION   = 7;
@@ -121,26 +122,35 @@ router.post('/render', async function(req, res, next) {
     const timestamp = Date.now();
     const outputFile = `/tmp/reel-${timestamp}.mp4`;
 
-    // Split, word-wrap, cap at 4 lines, optionally append emoji to last line
+    // Split, word-wrap, cap at 4 lines
     const inputLines = text.split('\n').filter(l => l.trim());
-    let lines = inputLines.flatMap(l => wordWrap(l)).slice(0, 4);
-    if (emoji && lines.length > 0) {
-        lines[lines.length - 1] = lines[lines.length - 1] + ' ' + emoji;
-    }
+    const lines = inputLines.flatMap(l => wordWrap(l)).slice(0, 4);
+    const hasEmoji = !!(emoji && emoji.trim());
 
-    const lineHeight    = Math.round(fontSize * 1.3);
-    const totalHeight   = lines.length * lineHeight;
-    const position      = (text_position || 'center').toLowerCase();
+    const lineHeight  = Math.round(fontSize * 1.3);
+    // Total block height includes an extra line for emoji when present
+    const totalHeight = (lines.length + (hasEmoji ? 1 : 0)) * lineHeight;
+    const position    = (text_position || 'center').toLowerCase();
 
-    const drawtextFilters = lines.map((line, i) => {
-        // center: vertically center the whole text block
-        // bottom: anchor to lower portion (140px from bottom)
+    const allFilters = lines.map((line, i) => {
         const yPos = position === 'bottom'
-            ? `h-${140 + (lines.length - 1 - i) * lineHeight}`
+            ? `h-${140 + (lines.length - 1 - i + (hasEmoji ? 1 : 0)) * lineHeight}`
             : `(h-${totalHeight})/2+${i * lineHeight}`;
         const escaped = escapeDrawtext(line.trim());
         return `drawtext=fontfile=${fontPath}:text='${escaped}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=${yPos}:borderw=0`;
-    }).join(',');
+    });
+
+    if (hasEmoji) {
+        const emojiY = position === 'bottom'
+            ? `h-${140}`
+            : `(h-${totalHeight})/2+${lines.length * lineHeight}`;
+        const escapedEmoji = escapeDrawtext(emoji.trim());
+        allFilters.push(
+            `drawtext=fontfile=${EMOJI_FONT}:text='${escapedEmoji}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=${emojiY}:borderw=0`
+        );
+    }
+
+    const drawtextFilters = allFilters.join(',');
 
     const videoFilter = `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,eq=brightness=${bri},${drawtextFilters}`;
 

@@ -23,9 +23,9 @@ RUN apk add --no-cache git curl unzip
 # install pkg
 RUN npm install -g pkg
 
-# Inter (official) from release zip + Liberation Sans (Helvetica substitute)
+# Inter (official) from release zip + Liberation Sans (Helvetica substitute) + NotoColorEmoji
 RUN apk add --no-cache ttf-liberation unzip curl && \
-    mkdir -p /fonts/inter /fonts/liberation && \
+    mkdir -p /fonts/inter /fonts/liberation /fonts/noto && \
     curl -fL "https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip" -o /tmp/inter.zip && \
     echo "=== TTF files in zip ===" && unzip -l /tmp/inter.zip | grep -i "\.ttf" | head -20 && \
     unzip -j /tmp/inter.zip "*Regular.ttf" -d /fonts/inter/ && \
@@ -33,7 +33,8 @@ RUN apk add --no-cache ttf-liberation unzip curl && \
     FIRST=$(ls /fonts/inter/*.ttf 2>/dev/null | head -1) && \
     [ -n "$FIRST" ] && mv "$FIRST" /fonts/inter/Inter-Regular.ttf && \
     rm /tmp/inter.zip && \
-    find /usr/share/fonts -iname "LiberationSans-Regular.ttf" | head -1 | xargs -I{} cp {} /fonts/liberation/LiberationSans-Regular.ttf
+    find /usr/share/fonts -iname "LiberationSans-Regular.ttf" | head -1 | xargs -I{} cp {} /fonts/liberation/LiberationSans-Regular.ttf && \
+    curl -fL "https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf" -o /fonts/noto/NotoColorEmoji.ttf
 
 ENV PKG_CACHE_PATH /usr/cache
 
@@ -52,10 +53,11 @@ FROM jrottenberg/ffmpeg:4.2-alpine311
 # Install fontconfig only (font file copied from build stage)
 RUN apk add --no-cache fontconfig
 
-# Copy Inter font from build stage and register it
-RUN mkdir -p /usr/share/fonts/truetype/inter /usr/share/fonts/truetype/liberation
+# Copy fonts from build stage and register them
+RUN mkdir -p /usr/share/fonts/truetype/inter /usr/share/fonts/truetype/liberation /usr/share/fonts/truetype/noto
 COPY --from=build /fonts/inter/Inter-Regular.ttf /usr/share/fonts/truetype/inter/Inter-Regular.ttf
 COPY --from=build /fonts/liberation/LiberationSans-Regular.ttf /usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf
+COPY --from=build /fonts/noto/NotoColorEmoji.ttf /usr/share/fonts/truetype/noto/NotoColorEmoji.ttf
 RUN fc-cache -f
 
 # Create user and change workdir
