@@ -2,7 +2,39 @@ var express = require('express')
 const ffmpeg = require('fluent-ffmpeg');
 const logger = require('../utils/logger.js')
 const utils = require('../utils/utils.js')
+const fs = require('fs');
+const http = require('http');
+const https = require('https');
+const path = require('path');
 var router = express.Router()
+
+function downloadToTemp(url) {
+    return new Promise((resolve, reject) => {
+        const timestamp = Date.now();
+        const ext = path.extname(new URL(url).pathname) || '.mp3';
+        const tmpPath = `/tmp/audio-${timestamp}${ext}`;
+        const file = fs.createWriteStream(tmpPath);
+
+        function fetch(currentUrl) {
+            const mod = currentUrl.startsWith('https') ? https : http;
+            mod.get(currentUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+                if ([301, 302, 307, 308].includes(res.statusCode)) {
+                    return fetch(res.headers.location);
+                }
+                if (res.statusCode !== 200) {
+                    file.close();
+                    fs.unlink(tmpPath, () => {});
+                    return reject(new Error(`Audio download failed: HTTP ${res.statusCode}`));
+                }
+                res.pipe(file);
+                file.on('finish', () => file.close(() => resolve(tmpPath)));
+                file.on('error', (err) => { fs.unlink(tmpPath, () => {}); reject(err); });
+            }).on('error', (err) => { fs.unlink(tmpPath, () => {}); reject(err); });
+        }
+
+        fetch(url);
+    });
+}
 
 const FONTS = {
     inter:     '/usr/share/fonts/truetype/inter/Inter-Regular.ttf',
@@ -47,7 +79,7 @@ function wordWrap(line) {
 //   video_url,  text,        brightness?,  duration?,
 //   font?,      font_size?,  emoji?,       audio_url?
 // }
-router.post('/render', function(req, res, next) {
+router.post('/render', async function(req, res, next) {
     const {
         video_url, text,
         brightness, duration,
@@ -100,11 +132,26 @@ router.post('/render', function(req, res, next) {
 
     logger.debug(`reel render — font: ${fontKey}, size: ${fontSize}, brightness: ${bri}, dur: ${dur}s, emoji: ${emoji || 'none'}, audio: ${audio_url || 'none'}`);
 
+    let localAudioPath = null;
+
+    try {
+        if (audio_url) {
+            logger.debug(`downloading audio: ${audio_url}`);
+            localAudioPath = await downloadToTemp(audio_url);
+            logger.debug(`audio saved to: ${localAudioPath}`);
+        }
+    } catch (err) {
+        logger.error(`audio download error: ${err}`);
+        res.writeHead(500, {'Content-Type': 'application/json'});
+        res.end(JSON.stringify({ error: `Audio download failed: ${err.message}` }));
+        return;
+    }
+
     let cmd = ffmpeg(video_url);
 
-    if (audio_url) {
+    if (localAudioPath) {
         const audioSeek = parseFloat(audio_start) || 0;
-        cmd.addInput(audio_url).inputOptions(audioSeek > 0 ? [`-ss ${audioSeek}`] : []);
+        cmd.addInput(localAudioPath).inputOptions(audioSeek > 0 ? [`-ss ${audioSeek}`] : []);
         cmd.complexFilter([
             `[0:v]${videoFilter}[v]`,
             `[1:a]volume=-20dB[a]`
@@ -136,11 +183,13 @@ router.post('/render', function(req, res, next) {
     cmd
         .on('error', function(err) {
             logger.error(`reel render error: ${err}`);
+            if (localAudioPath) fs.unlink(localAudioPath, () => {});
             res.writeHead(500, {'Connection': 'close'});
             res.end(JSON.stringify({ error: `Render failed: ${err.message}` }));
         })
         .on('end', function() {
             logger.debug(`reel render complete: ${outputFile}`);
+            if (localAudioPath) fs.unlink(localAudioPath, () => {});
             return utils.downloadFile(outputFile, null, req, res, next);
         })
         .save(outputFile);
