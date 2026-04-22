@@ -105,9 +105,10 @@ async function renderTextOverlay(textLines, emoji, fontSize, fontName, position,
 
     // Step 1: render pango text block at natural size (720px wrap, auto height, center-aligned)
     const textPng = outputPath.replace('.png', '-text.png');
+    // 620px wide = 50px horizontal padding each side when centered on 720px canvas
     const step1 = [
         '-background', 'none',
-        '-size', '720x0',
+        '-size', '620x0',
         '-define', 'pango:align=center',
         `pango:${markup}`,
     ];
