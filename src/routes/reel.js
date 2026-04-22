@@ -99,18 +99,23 @@ function wordWrap(line) {
 
 async function renderTextOverlay(textLines, emoji, fontSize, fontName, position, outputPath) {
     const hasEmoji = !!(emoji && emoji.trim());
-    const allLines = [...textLines, ...(hasEmoji ? [emoji.trim()] : [])];
-    const content = escapeXml(allLines.join('\n'));
-    // pango-align center, font set to requested face + size, white text
-    const markup = `<span font="${fontName} ${fontSize}" foreground="white">${content}</span>`;
+    const textContent = escapeXml(textLines.join('\n'));
+
+    // Emoji MUST be in its own span with an explicit color-emoji font and NO foreground
+    // override — setting foreground="white" on color glyphs (CBDT/COLRv1) forces the
+    // monochrome rendering path and produces a tiny broken glyph.
+    const markup = hasEmoji
+        ? `<span font="${fontName} ${fontSize}" foreground="white">${textContent}\n</span>` +
+          `<span font="Noto Color Emoji ${fontSize}">${emoji.trim()}</span>`
+        : `<span font="${fontName} ${fontSize}" foreground="white">${textContent}</span>`;
 
     // Render at natural width (720px wrap) and auto height, then position on full canvas
-    const baseArgs = ['-background', 'none', '-size', '720x0', `pango:${markup}`];
+    const baseArgs = ['-background', 'none', '-gravity', 'Center', '-size', '720x0', `pango:${markup}`];
 
     const posArgs = position === 'bottom'
         ? [
-            '-gravity', 'South', '-splice', '0x140',  // 140px transparent padding below text
-            '-gravity', 'South', '-extent', '720x1280' // anchor to bottom of full canvas
+            '-gravity', 'South', '-splice', '0x140',   // 140px transparent padding below text
+            '-gravity', 'South', '-extent', '720x1280'  // anchor to bottom of full canvas
           ]
         : [
             '-gravity', 'Center', '-extent', '720x1280' // center vertically on full canvas
