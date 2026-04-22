@@ -101,22 +101,34 @@ async function renderTextOverlay(textLines, emoji, fontSize, fontName, position,
     const hasEmoji = !!(emoji && emoji.trim());
     const allLines = [...textLines, ...(hasEmoji ? [emoji.trim()] : [])];
     const content = escapeXml(allLines.join('\n'));
-    // pango-align center, font set to requested face + size, white text
     const markup = `<span font="${fontName} ${fontSize}" foreground="white">${content}</span>`;
 
-    // Render at natural width (720px wrap) and auto height, then position on full canvas
-    const baseArgs = ['-background', 'none', '-size', '720x0', `pango:${markup}`];
+    // Step 1: render pango text block at natural size (720px wrap, auto height, center-aligned)
+    const textPng = outputPath.replace('.png', '-text.png');
+    const step1 = [
+        '-background', 'none',
+        '-size', '720x0',
+        '-define', 'pango:align=center',
+        `pango:${markup}`,
+    ];
+    // For bottom: splice 140px transparent space below text so it sits 140px from canvas edge
+    if (position === 'bottom') {
+        step1.push('-gravity', 'South', '-splice', '0x140');
+    }
+    step1.push(textPng);
+    await execFileAsync('convert', step1);
 
-    const posArgs = position === 'bottom'
-        ? [
-            '-gravity', 'South', '-splice', '0x140',  // 140px transparent padding below text
-            '-gravity', 'South', '-extent', '720x1280' // anchor to bottom of full canvas
-          ]
-        : [
-            '-gravity', 'Center', '-extent', '720x1280' // center vertically on full canvas
-          ];
+    // Step 2: composite text block onto a full 720x1280 transparent canvas
+    const gravity = position === 'bottom' ? 'South' : 'Center';
+    await execFileAsync('convert', [
+        '-size', '720x1280', 'xc:none',
+        textPng,
+        '-gravity', gravity,
+        '-composite',
+        outputPath
+    ]);
 
-    await execFileAsync('convert', [...baseArgs, ...posArgs, outputPath]);
+    fs.unlink(textPng, () => {});
 }
 
 // ── Route ─────────────────────────────────────────────────────────────
