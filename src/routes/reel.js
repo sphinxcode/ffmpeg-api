@@ -56,11 +56,12 @@ function downloadToTemp(url) {
     });
 }
 
-// ── Text overlay helper (ImageMagick + pango) ────────────────────────
+// ── Text + emoji overlay (ImageMagick pango + Twemoji CDN) ───────────
 //
-// FFmpeg drawtext cannot render color emoji (no FT_LOAD_COLOR in vf_drawtext.c).
-// Instead: render text+emoji to a transparent PNG via ImageMagick pango:,
-// then composite onto video with FFmpeg overlay filter.
+// FFmpeg drawtext has no color-emoji support (no FT_LOAD_COLOR upstream).
+// Pango/fontconfig also returns "No glyph" for CBDT emoji on many Debian
+// configs. Solution: fetch emoji as PNG from Twemoji CDN (confirmed working
+// approach used by pilmoji and similar libraries), composite below text.
 
 const FONT_NAMES = {
     inter:     'Inter',
@@ -97,31 +98,106 @@ function wordWrap(line) {
     return wrapped;
 }
 
+// Convert emoji string to Twemoji filename codepoint (e.g. "📈" → "1f4c8")
+function emojiToTwemojiCode(emojiStr) {
+    const cps = [];
+    for (const char of emojiStr) {
+        const cp = char.codePointAt(0);
+        if (cp !== undefined && cp !== 0xFE0F) cps.push(cp.toString(16));
+    }
+    return cps.join('-');
+}
+
+// Generic URL fetcher with redirect following (reuses downloadToTemp logic)
+function fetchUrl(url) {
+    return new Promise((resolve, reject) => {
+        const ts = Date.now() + Math.random().toString(36).slice(2, 6);
+        const ext = path.extname(new URL(url).pathname) || '.png';
+        const tmpPath = `/tmp/fetch-${ts}${ext}`;
+        const file = fs.createWriteStream(tmpPath);
+
+        function get(currentUrl) {
+            const mod = currentUrl.startsWith('https') ? https : http;
+            mod.get(currentUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+                if ([301, 302, 307, 308].includes(res.statusCode)) return get(res.headers.location);
+                if (res.statusCode !== 200) {
+                    file.close(); fs.unlink(tmpPath, () => {});
+                    return reject(new Error(`HTTP ${res.statusCode}`));
+                }
+                res.pipe(file);
+                file.on('finish', () => file.close(() => resolve(tmpPath)));
+                file.on('error', (err) => { fs.unlink(tmpPath, () => {}); reject(err); });
+            }).on('error', (err) => { fs.unlink(tmpPath, () => {}); reject(err); });
+        }
+        get(url);
+    });
+}
+
 async function renderTextOverlay(textLines, emoji, fontSize, fontName, position, outputPath) {
+    const ts = Date.now();
     const hasEmoji = !!(emoji && emoji.trim());
     const textContent = escapeXml(textLines.join('\n'));
+    const markup = `<span font="${fontName} ${fontSize}" foreground="white">${textContent}</span>`;
 
-    // Emoji MUST be in its own span with an explicit color-emoji font and NO foreground
-    // override — setting foreground="white" on color glyphs (CBDT/COLRv1) forces the
-    // monochrome rendering path and produces a tiny broken glyph.
-    const markup = hasEmoji
-        ? `<span font="${fontName} ${fontSize}" foreground="white">${textContent}\n</span>` +
-          `<span font="Noto Color Emoji ${fontSize}">${emoji.trim()}</span>`
-        : `<span font="${fontName} ${fontSize}" foreground="white">${textContent}</span>`;
+    if (!hasEmoji) {
+        // Text only — pango renders fine
+        const posArgs = position === 'bottom'
+            ? ['-gravity', 'South', '-splice', '0x140', '-gravity', 'South', '-extent', '720x1280']
+            : ['-gravity', 'Center', '-extent', '720x1280'];
+        await execFileAsync('convert', [
+            '-background', 'none', '-gravity', 'Center', '-size', '720x0', `pango:${markup}`,
+            ...posArgs, outputPath
+        ]);
+        return;
+    }
 
-    // Render at natural width (720px wrap) and auto height, then position on full canvas
-    const baseArgs = ['-background', 'none', '-gravity', 'Center', '-size', '720x0', `pango:${markup}`];
+    // With emoji: render text PNG, fetch Twemoji PNG, stack vertically, position on canvas
+    const emojiSize  = Math.max(Math.round(fontSize * 1.2), 48);
+    const textPng    = `/tmp/text-${ts}.png`;
+    const emojiPng   = `/tmp/emoji-${ts}.png`;
+    const emojiRow   = `/tmp/emojirow-${ts}.png`;
+    const spacerPng  = `/tmp/spacer-${ts}.png`;
+    const tmpFiles   = [textPng, emojiPng, emojiRow, spacerPng];
 
-    const posArgs = position === 'bottom'
-        ? [
-            '-gravity', 'South', '-splice', '0x140',   // 140px transparent padding below text
-            '-gravity', 'South', '-extent', '720x1280'  // anchor to bottom of full canvas
-          ]
-        : [
-            '-gravity', 'Center', '-extent', '720x1280' // center vertically on full canvas
-          ];
+    try {
+        // 1. Render text at natural height (720px wide)
+        await execFileAsync('convert', [
+            '-background', 'none', '-gravity', 'Center', '-size', '720x0', `pango:${markup}`,
+            textPng
+        ]);
 
-    await execFileAsync('convert', [...baseArgs, ...posArgs, outputPath]);
+        // 2. Fetch emoji PNG from Twemoji CDN and resize
+        const code = emojiToTwemojiCode(emoji.trim());
+        const twemojiUrl = `https://cdn.jsdelivr.net/npm/twemoji@14.0.2/assets/72x72/${code}.png`;
+        logger.debug(`fetching twemoji: ${twemojiUrl}`);
+        const rawPng = await fetchUrl(twemojiUrl);
+        tmpFiles.push(rawPng);
+        await execFileAsync('convert', [rawPng, '-resize', `${emojiSize}x${emojiSize}`, emojiPng]);
+
+        // 3. Center emoji in a 720-wide transparent row
+        await execFileAsync('convert', [
+            '-background', 'none', '-size', `720x${emojiSize}`, 'xc:none',
+            emojiPng, '-gravity', 'Center', '-composite',
+            emojiRow
+        ]);
+
+        // 4. 12px transparent spacer between text and emoji
+        await execFileAsync('convert', ['-background', 'none', '-size', '720x12', 'xc:none', spacerPng]);
+
+        // 5. Stack text → spacer → emoji row, then position on full 720x1280 canvas
+        const gravity = position === 'bottom' ? 'South' : 'Center';
+        const spliceArgs = position === 'bottom'
+            ? ['-gravity', 'South', '-splice', '0x140'] : [];
+        await execFileAsync('convert', [
+            '-background', 'none',
+            textPng, spacerPng, emojiRow,
+            '-append',
+            '-gravity', gravity, ...spliceArgs, '-extent', '720x1280',
+            outputPath
+        ]);
+    } finally {
+        tmpFiles.forEach(f => fs.unlink(f, () => {}));
+    }
 }
 
 // ── Route ─────────────────────────────────────────────────────────────
