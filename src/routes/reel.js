@@ -70,7 +70,7 @@ const DEFAULT_FONT       = 'inter';
 const DEFAULT_BRIGHTNESS = -0.35;
 const DEFAULT_DURATION   = 7;
 const DEFAULT_FPS        = 24;
-const DEFAULT_FONT_SIZE  = 48;
+const DEFAULT_FONT_SIZE  = 40;
 const MAX_CHARS_PER_LINE = 30;
 
 function escapeXml(str) {
@@ -105,10 +105,9 @@ async function renderTextOverlay(textLines, emoji, fontSize, fontName, position,
 
     // Step 1: render pango text block at natural size (720px wrap, auto height, center-aligned)
     const textPng = outputPath.replace('.png', '-text.png');
-    // 620px wide = 50px horizontal padding each side when centered on 720px canvas
     const step1 = [
         '-background', 'none',
-        '-size', '620x0',
+        '-size', '720x0',
         '-define', 'pango:align=center',
         `pango:${markup}`,
     ];
